@@ -158,6 +158,18 @@ describe('isToolRelatedError', () => {
     expect(onStreamEvent).toHaveBeenCalledTimes(2)
   })
 
+  it('uses a runtime stream override without calling the provider', async () => {
+    const store = useLLM()
+    const override = vi.fn(async () => {})
+    const messages = [{ role: 'user', content: 'hello' }] as Message[]
+
+    store.setStreamOverride(override)
+    await store.stream('model-a', provider, messages)
+
+    expect(override).toHaveBeenCalledWith('model-a', provider, messages, undefined)
+    expect(streamTextMock).not.toHaveBeenCalled()
+  })
+
   it('ignores later error events after steps have resolved', async () => {
     let onEvent: ((event: unknown) => Promise<void>) | undefined
     streamTextMock.mockImplementation((options: { onEvent: (event: unknown) => Promise<void> }) => {

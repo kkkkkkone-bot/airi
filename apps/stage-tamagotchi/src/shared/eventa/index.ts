@@ -28,7 +28,13 @@ import type {
 } from '@proj-airi/stage-ui-three/trace'
 import type { Rectangle } from 'electron'
 
+import type { CodexBridgeEvent, CodexBridgeStatus, CodexTurnReference, CodexTurnRequest } from '../codex-bridge'
+
 import { defineEventa, defineInvokeEventa } from '@moeru/eventa'
+
+export const electronCodexGetStatus = defineInvokeEventa<CodexBridgeStatus>('eventa:invoke:electron:codex:get-status')
+export const electronCodexStreamTurn = defineInvokeEventa<CodexBridgeEvent, CodexTurnRequest>('eventa:invoke:electron:codex:stream-turn')
+export const electronCodexInterruptTurn = defineInvokeEventa<void, CodexTurnReference>('eventa:invoke:electron:codex:interrupt-turn')
 
 export const electronStartTrackMousePosition = defineInvokeEventa('eventa:invoke:electron:start-tracking-mouse-position')
 export const electronStartDraggingWindow = defineInvokeEventa('eventa:invoke:electron:start-dragging-window')

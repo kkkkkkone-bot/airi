@@ -52,6 +52,7 @@ import {
   electronPluginUnload,
 } from '../shared/eventa/plugin/host'
 import { electronPluginToolsChanged } from '../shared/eventa/plugin/tools'
+import { createCodexBrainBridge } from './bridges/codex-brain'
 import { initializeElectronAuthCallbackBridge } from './bridges/electron-auth-callback'
 import { initializeStageThreeRuntimeTraceBridge } from './bridges/stage-three-runtime-trace'
 import { useLanguage } from './composables/use-language'
@@ -113,6 +114,7 @@ const stopToolLeadershipListener = syncedPinia.onLeadershipChange((isLeader) => 
 })
 
 function createFullStageRuntime() {
+  const codexBrainBridge = createCodexBrainBridge()
   const contextBridgeStore = useContextBridgeStore()
   const displayModelsStore = useDisplayModelsStore()
   const serverChannelSettingsStore = useServerChannelSettingsStore()
@@ -214,6 +216,9 @@ function createFullStageRuntime() {
   return {
     async initialize() {
       initializeAnalytics()
+      const codexStatus = await codexBrainBridge.initialize()
+      if (codexStatus.enabled)
+        console.info(`[codex-brain] Enabled for ${codexStatus.workspace}`)
       await displayModelsStore.initialize()
       cardStore.initialize()
 
@@ -262,6 +267,7 @@ function createFullStageRuntime() {
       inferencePreload.triggerPreload()
     },
     dispose() {
+      codexBrainBridge.dispose()
       if (!isAuxiliaryChatRoute)
         contextBridgeStore.dispose()
     },

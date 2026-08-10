@@ -30,6 +30,8 @@ import { setElectronMainDirname } from './libs/electron/location'
 import { createI18n } from './libs/i18n'
 import { createWindowAuthManagerService } from './services/airi/auth'
 import { setupServerChannel } from './services/airi/channel-server'
+import { createDesktopCodexBridgeManager } from './services/airi/codex-bridge'
+import { createCodexService } from './services/airi/codex-service'
 import { setupGodotStageManager } from './services/airi/godot-stage'
 import { setupBuiltInServer } from './services/airi/http-server'
 import { setupMcpStdioManager } from './services/airi/mcp-servers'
@@ -169,6 +171,10 @@ app.whenReady().then(async () => {
   const mcpStdioManager = injeca.provide('modules:mcp-stdio-manager', {
     build: async () => setupMcpStdioManager(),
   })
+
+  const codexBridgeManager = createDesktopCodexBridgeManager()
+  const { context: codexContext } = createContext(ipcMain)
+  createCodexService({ context: codexContext, manager: codexBridgeManager })
 
   const widgetsManager = injeca.provide('windows:widgets', {
     dependsOn: { serverChannel, i18n },

@@ -5,18 +5,31 @@ import type { Message } from '@xsai/shared-chat'
 import { streamFrom as coreStreamFrom, isContentArrayRelatedError, isToolRelatedError, modelKey } from '@proj-airi/core-agent'
 import { listModels } from '@xsai/model'
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, shallowRef } from 'vue'
 
 import { resolveLlmTools } from './tool-resolver'
 
 export type { StreamEvent, StreamOptions } from '@proj-airi/core-agent'
 export { isContentArrayRelatedError, isToolRelatedError } from '@proj-airi/core-agent'
 
+export type LlmStreamOverride = (
+  model: string,
+  chatProvider: ChatProvider,
+  messages: Message[],
+  options?: StreamOptions,
+) => Promise<void>
+
 export const useLLM = defineStore('llm', () => {
   const toolsCompatibility = ref<Map<string, boolean>>(new Map())
   const contentArrayCompatibility = ref<Map<string, boolean>>(new Map())
+  const streamOverride = shallowRef<LlmStreamOverride>()
 
   async function stream(model: string, chatProvider: ChatProvider, messages: Message[], options?: StreamOptions) {
+    if (streamOverride.value) {
+      await streamOverride.value(model, chatProvider, messages, options)
+      return
+    }
+
     const key = modelKey(model, chatProvider)
     const { tools: customTools, ...streamOptions } = options ?? {}
     const builtinToolsResolver = () => resolveLlmTools({ customTools })
@@ -74,8 +87,13 @@ export const useLLM = defineStore('llm', () => {
     }
   }
 
+  function setStreamOverride(override?: LlmStreamOverride) {
+    streamOverride.value = override
+  }
+
   return {
     models,
+    setStreamOverride,
     stream,
   }
 })
