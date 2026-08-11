@@ -13,6 +13,7 @@ import {
 } from './local-audio'
 import { getDefinedProvider } from './registry'
 import { providerSpeechNoop } from './speech-noop'
+import { providerWhisperLocal } from './whisper-local'
 
 import './index'
 
@@ -74,6 +75,24 @@ describe('migrated provider definitions', () => {
       streamOutput: false,
       streamInput: false,
     })
+  })
+
+  it('offers credential-free local Whisper transcription', async () => {
+    expect(providerWhisperLocal.requiresCredentials).toBe(false)
+    expect(providerWhisperLocal.tasks).toContain('speech-to-text')
+    expect(providerWhisperLocal.capabilities?.transcription).toEqual({
+      protocol: 'http',
+      generateOutput: true,
+      streamOutput: false,
+      streamInput: false,
+    })
+
+    await expect(providerWhisperLocal.extraMethods?.listModels?.({}, {} as never)).resolves.toEqual([
+      expect.objectContaining({
+        id: 'whisper-large-v3-turbo',
+        provider: 'whisper-local',
+      }),
+    ])
   })
 
   it('keeps the local audio base URL validation in the definition', async () => {

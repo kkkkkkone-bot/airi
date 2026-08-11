@@ -6,12 +6,14 @@ import type { CodexBridgeEvent, CodexTurnRequest } from '../../shared/codex-brid
 import { defineStreamInvoke } from '@moeru/eventa'
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { useLLM } from '@proj-airi/stage-ui/stores/ai/chat-llm/llm'
+import { useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 
 import {
   electronCodexGetStatus,
   electronCodexInterruptTurn,
   electronCodexStreamTurn,
 } from '../../shared/eventa'
+import { applyCodexHearingDefaults } from './codex-hearing'
 
 function contentText(content: unknown): string {
   if (typeof content === 'string')
@@ -95,6 +97,7 @@ export function createCodexBrainBridge() {
   const interruptTurn = useElectronEventaInvoke(electronCodexInterruptTurn)
   const streamTurn = defineStreamInvoke(context.value, electronCodexStreamTurn)
   const llm = useLLM()
+  const hearing = useHearingStore()
   let enabled = false
 
   return {
@@ -103,6 +106,9 @@ export function createCodexBrainBridge() {
       enabled = status.enabled
       if (!enabled)
         return status
+
+      if (applyCodexHearingDefaults(hearing))
+        console.info('[codex-brain] Hearing defaulted to local Whisper')
 
       llm.setStreamOverride(async (_model, _chatProvider, messages, options) => {
         await runCodexStream(messages, options, streamTurn, interruptTurn)
