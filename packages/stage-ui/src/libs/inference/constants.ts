@@ -34,7 +34,8 @@ export const TIMEOUTS = {
   KOKORO_GENERATE: 120_000,
 
   /** Whisper model load timeout (larger model, allow more time) */
-  WHISPER_LOAD: 180_000,
+  // First use may include downloading and compiling the large multilingual model.
+  WHISPER_LOAD: 600_000,
   /** Whisper transcription timeout */
   WHISPER_TRANSCRIBE: 120_000,
 
