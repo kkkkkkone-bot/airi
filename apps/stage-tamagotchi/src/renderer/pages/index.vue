@@ -46,6 +46,7 @@ import { shouldOpenProviderOnboarding } from '../utils/codex-simple-settings'
 import { resolveFadeOnHoverInteraction } from '../utils/fade-on-hover'
 import { shouldSampleStageTransparency } from '../utils/stage-three-transparency'
 import { createVoiceInputInteractionLifecycle } from '../utils/voice-input-lifecycle'
+import { createVoiceInputLoopGuard } from '../utils/voice-input-loop-guard'
 import {
   assistantSpeechCooldownDeadline,
   DEFAULT_ASSISTANT_SPEECH_INPUT_COOLDOWN_MS,
@@ -340,6 +341,7 @@ const voiceTranscriptBuffer = createTranscriptBuffer({
     await sendVoiceInputTextToChat(text)
   },
 })
+const voiceInputLoopGuard = createVoiceInputLoopGuard()
 
 const assistantSpeechSuppressedUntil = shallowRef(0)
 const assistantSpeechResumeTimer = shallowRef<ReturnType<typeof setTimeout>>()
@@ -520,6 +522,21 @@ async function sendVoiceInputTextToChat(text: string) {
   }
 }
 
+/** Filters repeated or known external audio before it can reach captions or chat. */
+function shouldAcceptVoiceTranscript(text: string) {
+  const loopDecision = voiceInputLoopGuard.inspect(text)
+  if (!loopDecision.allow) {
+    console.warn('[Main Page] Ignored repeated voice transcript to prevent an audio feedback loop.')
+    if (loopDecision.disableMicrophone) {
+      enabled.value = false
+      toast.error('Repeated audio input was detected. Microphone has been turned off.')
+    }
+    return false
+  }
+
+  return true
+}
+
 /** Sends completed streaming-ASR sentences to captions and chat. */
 function handleStreamingSentenceEnd(delta: string) {
   if (isVoiceInputSuppressed())
@@ -527,6 +544,8 @@ function handleStreamingSentenceEnd(delta: string) {
 
   const finalText = delta
   if (!finalText || !finalText.trim())
+    return
+  if (!shouldAcceptVoiceTranscript(finalText))
     return
 
   postSpeakerCaption(finalText)
@@ -553,6 +572,9 @@ const voiceInputSession = useVoiceInputSession(stream, {
   inspectAfterTranscription: ({ metadata }) => inspectVoiceInputProviderRequestGate(getVoiceInputGeneration(metadata)),
   onRecordingReady: () => ({ generation: voiceInputGeneration }),
   onTranscriptionResult: ({ text }) => {
+    if (!shouldAcceptVoiceTranscript(text))
+      return
+
     postSpeakerCaption(text)
     toast(`Voice input transcribed: ${text}`)
     voiceTranscriptBuffer.push(text)
@@ -618,6 +640,7 @@ async function stopAudioInteractionConsumers(options: StopAudioInteractionOption
 
   clearAssistantSpeechResumeTimer()
   voiceInputGeneration += 1
+  voiceInputLoopGuard.reset()
 
   await Promise.all([
     stopStreamingTranscription(true),
