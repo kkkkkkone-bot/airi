@@ -35,6 +35,7 @@ import { errorMessageFromValue } from '@proj-airi/stage-shared'
 
 import { MODEL_IDS, MODEL_NAMES } from '../inference/constants'
 import { classifyError, isRecoverable } from '../inference/protocol'
+import { whisperWarmupShape } from './whisper-shape'
 
 // ---------------------------------------------------------------------------
 // Inference-specific input/output types
@@ -272,11 +273,10 @@ async function loadModel(request: LoadModelRequest): Promise<void> {
 
     sendProgress(requestId, 'warmup', -1, 'Compiling shaders and warming up model...')
 
-    // Run model with dummy input to compile WebGPU shaders.
-    // NOTICE: Using minimal time-steps (1) instead of 3000 to reduce warm-up latency.
-    // The feature dimension (128) must match the encoder's expected mel-spectrogram bins for fp16.
+    // Run the model once to compile WebGPU shaders. This ONNX export has a static
+    // 3000-frame encoder input, so a one-frame shortcut fails before the model is ready.
     await model.generate({
-      input_features: full([1, 128, 1], 0.0),
+      input_features: full(whisperWarmupShape(), 0.0),
       max_new_tokens: 1,
     } as Record<string, unknown>)
 
