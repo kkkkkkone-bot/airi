@@ -10,6 +10,7 @@ import type { ToolCallRerunPayload } from './tool-call-rerun'
 import { errorMessageFrom } from '@moeru/std'
 import { createChatOrchestratorRuntime } from '@proj-airi/core-agent'
 import { IOAttributes, IOEvents, IOSpanNames, IOSubsystems } from '@proj-airi/stage-shared'
+import { createChatProvider } from '@xsai-ext/providers/utils'
 import { nanoid } from 'nanoid'
 import { defineStore, storeToRefs } from 'pinia'
 import { ref, toRaw, watch } from 'vue'
@@ -45,6 +46,11 @@ interface ForkOptions {
   reason?: string
   hidden?: boolean
 }
+
+const runtimeStreamOverrideProvider = createChatProvider({
+  apiKey: 'runtime-stream-override',
+  baseURL: 'http://localhost/',
+})
 
 /** A serializable chat request that any application context can send to the leader. */
 export interface ChatSendPayload {
@@ -343,13 +349,16 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function executeSend(payload: ChatSendPayload): Promise<ChatSendResult> {
-    const providerId = activeProvider.value
-    const modelId = activeModel.value
+    const useRuntimeStreamOverride = llmStore.hasStreamOverride()
+    const providerId = activeProvider.value || (useRuntimeStreamOverride ? 'runtime-stream-override' : '')
+    const modelId = activeModel.value || (useRuntimeStreamOverride ? 'runtime-stream-override' : '')
     if (!providerId || !modelId)
       throw new Error('No active chat provider or model configured')
 
     const messageCount = chatSession.getSessionMessages(payload.sessionId).length
-    const chatProvider = await providerStore.getProviderInstance<ChatProvider>(providerId)
+    const chatProvider = useRuntimeStreamOverride
+      ? runtimeStreamOverrideProvider
+      : await providerStore.getProviderInstance<ChatProvider>(providerId)
     if (!chatProvider)
       throw new Error(`Failed to resolve chat provider "${providerId}"`)
 

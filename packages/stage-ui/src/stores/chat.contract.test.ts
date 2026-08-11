@@ -43,6 +43,7 @@ const ioTracerMocks = vi.hoisted(() => {
 })
 
 const llmStreamMock = vi.fn()
+let hasStreamOverride = false
 const trackFirstMessageMock = vi.fn()
 const chatAnalyticsMocks = vi.hoisted(() => ({
   trackAiGeneration: vi.fn(),
@@ -214,6 +215,7 @@ vi.mock('./chat/stream-store', () => ({
 
 vi.mock('./ai/chat-llm/llm', () => ({
   useLLM: () => ({
+    hasStreamOverride: () => hasStreamOverride,
     stream: llmStreamMock,
   }),
 }))
@@ -299,6 +301,8 @@ describe('chat store contract', () => {
     ioTracerMocks.startSpanMock.mockClear()
     activeSessionIdRef.value = 'session-1'
     activeProviderRef.value = 'mock-provider'
+    activeModelRef.value = 'gpt-test'
+    hasStreamOverride = false
     streamingMessageRef.value = { role: 'assistant', content: '', slices: [], tool_results: [] }
     currentGeneration = 1
 
@@ -336,6 +340,33 @@ describe('chat store contract', () => {
       ['stage_widgets'],
       ['stage_widgets'],
     ])
+  })
+
+  it('sends through a runtime stream override without a configured provider', async () => {
+    activeProviderRef.value = ''
+    activeModelRef.value = ''
+    hasStreamOverride = true
+    llmStreamMock.mockImplementation(async (_model: string, _chatProvider: ChatProvider, _messages: Message[], options: any) => {
+      await options.onStreamEvent({ type: 'text-delta', text: 'Codex reply' })
+      await options.onStreamEvent({ type: 'finish', finishReason: 'stop' })
+    })
+
+    const store = useChatStore()
+    const result = await store.send({
+      sessionId: 'session-1',
+      text: 'hello Codex',
+    })
+
+    expect(getProviderInstanceMock).not.toHaveBeenCalled()
+    expect(llmStreamMock).toHaveBeenCalledWith(
+      'runtime-stream-override',
+      expect.objectContaining({ chat: expect.any(Function) }),
+      expect.any(Array),
+      expect.any(Object),
+    )
+    expect(result.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'assistant', content: 'Codex reply' }),
+    ]))
   })
 
   it('forwards one correlation identity across every PostHog chat milestone', async () => {

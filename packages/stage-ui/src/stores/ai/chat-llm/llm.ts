@@ -91,7 +91,12 @@ export const useLLM = defineStore('llm', () => {
     streamOverride.value = override
   }
 
+  function hasStreamOverride() {
+    return streamOverride.value !== undefined
+  }
+
   return {
+    hasStreamOverride,
     models,
     setStreamOverride,
     stream,
