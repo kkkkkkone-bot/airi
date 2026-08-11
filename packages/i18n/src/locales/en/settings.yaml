@@ -215,6 +215,38 @@ live2d:
       custom: Custom
 microphone: Microphone
 models: Model
+codexSimple:
+  connected:
+    title: Codex is connected
+    description: Codex manages conversations and tools. You can start talking right away.
+    ready: Ready
+  advanced:
+    title: Advanced settings
+    show: Show
+    hide: Hide
+  voice:
+    title: Voice
+    description: Choose how your character sounds. Hearing is managed automatically.
+    pageTitle: Voice
+    hearingTitle: Listening is ready
+    hearingDescription: Microphone input is transcribed locally and sent directly to Codex.
+    automatic: Automatic
+    chooseTitle: Choose a voice
+    chooseDescription: This only changes how the character sounds when replying.
+    preview: Preview voice
+    previewText: Hello! Codex is connected, and I am ready to talk with you.
+    previewError: The voice could not be played. Please try again after the first download finishes.
+    firstUseHint: The first preview downloads the local voice model and may take a moment. It stays cached afterward.
+    voices:
+      xiaoxiao: Xiaoxiao
+      xiaobei: Xiaobei
+      xiaoyi: Xiaoyi
+      yunxi: Yunxi
+    tones:
+      warm: Warm and natural
+      bright: Bright and lively
+      soft: Soft and gentle
+      calm: Calm and clear
 pages:
   account:
     title: Account

@@ -117,6 +117,12 @@ describe('codex bridge manager', () => {
     expect(transport.requests.find(request => request.method === 'turn/start')?.params?.input).toEqual([
       { type: 'text', text: 'Be friendly.\n\nhello' },
     ])
+    expect(transport.requests.find(request => request.method === 'thread/start')?.params?.sandbox).toBe('workspace-write')
+    expect(transport.requests.find(request => request.method === 'turn/start')?.params?.sandboxPolicy).toEqual({
+      type: 'workspaceWrite',
+      writableRoots: ['C:\\project'],
+      networkAccess: false,
+    })
     expect(events).toEqual(expect.arrayContaining([
       { type: 'text-delta', text: 'Hi' },
       { type: 'reasoning-delta', text: 'Think' },

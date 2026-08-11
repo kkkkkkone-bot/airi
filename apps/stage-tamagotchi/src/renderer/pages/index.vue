@@ -38,10 +38,11 @@ import ControlsIsland from '../components/stage-islands/controls-island/index.vu
 import ResourceStatusIsland from '../components/stage-islands/resource-status-island/index.vue'
 import StatusIsland from '../components/stage-islands/status-island/index.vue'
 
-import { electronOpenOnboarding } from '../../shared/eventa'
+import { electronCodexGetStatus, electronOpenOnboarding } from '../../shared/eventa'
 import { modelSettingsRuntimeSnapshotChannelName } from '../../shared/model-settings-runtime'
 import { useControlsIslandStore } from '../stores/controls-island'
 import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
+import { shouldOpenProviderOnboarding } from '../utils/codex-simple-settings'
 import { resolveFadeOnHoverInteraction } from '../utils/fade-on-hover'
 import { shouldSampleStageTransparency } from '../utils/stage-three-transparency'
 import { createVoiceInputInteractionLifecycle } from '../utils/voice-input-lifecycle'
@@ -64,6 +65,7 @@ const shouldFadeOnCursorWithin = ref(false)
 
 const onboardingStore = useOnboardingStore()
 const openOnboarding = useElectronEventaInvoke(electronOpenOnboarding)
+const getCodexStatus = useElectronEventaInvoke(electronCodexGetStatus)
 
 const { isOutside: isOutsideWindow } = useElectronMouseInWindow()
 const { isOutside } = useElectronMouseInElement(controlsIslandRef)
@@ -676,10 +678,17 @@ watch(nowSpeaking, async (speaking) => {
   scheduleAssistantSpeechResume()
 })
 
-onMounted(() => {
-  if (onboardingStore.needsOnboarding) {
-    openOnboarding()
+onMounted(async () => {
+  let codexEnabled = false
+  try {
+    codexEnabled = (await getCodexStatus()).enabled
   }
+  catch (error) {
+    console.warn('[onboarding] Failed to inspect Codex status:', error)
+  }
+
+  if (shouldOpenProviderOnboarding(onboardingStore.needsOnboarding, codexEnabled))
+    await openOnboarding()
 })
 
 onUnmounted(() => {

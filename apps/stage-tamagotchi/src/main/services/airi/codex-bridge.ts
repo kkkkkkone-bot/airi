@@ -413,7 +413,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
         threadId: existing,
         cwd: workspace,
         approvalPolicy: 'never',
-        sandbox: 'workspaceWrite',
+        sandbox: 'workspace-write',
       })
       const resumedThreadId = nestedString(result, 'thread', 'id')
       if (!resumedThreadId)
@@ -426,7 +426,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
     const result = await rpc.request('thread/start', {
       cwd: workspace,
       approvalPolicy: 'never',
-      sandbox: 'workspaceWrite',
+      sandbox: 'workspace-write',
       serviceName: 'airi_codex_brain',
     })
     const threadId = nestedString(result, 'thread', 'id')

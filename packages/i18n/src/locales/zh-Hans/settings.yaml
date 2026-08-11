@@ -200,6 +200,38 @@ live2d:
       custom: 自定义
 microphone: 麦克风
 models: 模型
+codexSimple:
+  connected:
+    title: Codex 已连接
+    description: 对话和工具已由 Codex 管理，现在可以直接开始说话。
+    ready: 可以使用
+  advanced:
+    title: 高级设置
+    show: 展开
+    hide: 收起
+  voice:
+    title: 声音
+    description: 选择角色说话的声音，听觉由系统自动管理。
+    pageTitle: 声音
+    hearingTitle: 听觉已经准备好
+    hearingDescription: 麦克风语音会在本机转换成文字，然后直接交给 Codex。
+    automatic: 自动管理
+    chooseTitle: 选择角色声音
+    chooseDescription: 这里只改变角色回复时的声音，不影响 Codex 的思考能力。
+    preview: 试听声音
+    previewText: 你好！Codex 已经连接，我现在可以和你说话了。
+    previewError: 暂时无法播放声音，请等待首次下载完成后再试。
+    firstUseHint: 首次试听需要下载本地语音模型，可能需要稍等；以后会直接使用缓存。
+    voices:
+      xiaoxiao: 晓晓
+      xiaobei: 小北
+      xiaoyi: 小艺
+      yunxi: 云希
+    tones:
+      warm: 温暖自然
+      bright: 明亮活泼
+      soft: 轻柔亲切
+      calm: 沉稳清晰
 pages:
   account:
     title: 账号

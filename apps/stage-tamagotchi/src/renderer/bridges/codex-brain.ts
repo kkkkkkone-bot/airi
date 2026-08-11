@@ -7,6 +7,8 @@ import { defineStreamInvoke } from '@moeru/eventa'
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { useLLM } from '@proj-airi/stage-ui/stores/ai/chat-llm/llm'
 import { useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
+import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
+import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
 
 import {
   electronCodexGetStatus,
@@ -14,6 +16,7 @@ import {
   electronCodexStreamTurn,
 } from '../../shared/eventa'
 import { applyCodexHearingDefaults } from './codex-hearing'
+import { applyCodexSpeechDefaults, CODEX_SPEECH_PROVIDER_ID } from './codex-speech'
 
 function contentText(content: unknown): string {
   if (typeof content === 'string')
@@ -98,6 +101,8 @@ export function createCodexBrainBridge() {
   const streamTurn = defineStreamInvoke(context.value, electronCodexStreamTurn)
   const llm = useLLM()
   const hearing = useHearingStore()
+  const speech = useSpeechStore()
+  const providers = useProviderStore()
   let enabled = false
 
   return {
@@ -109,6 +114,12 @@ export function createCodexBrainBridge() {
 
       if (applyCodexHearingDefaults(hearing))
         console.info('[codex-brain] Hearing defaulted to local Whisper')
+
+      providers.initializeProvider(CODEX_SPEECH_PROVIDER_ID)
+      providers.forceProviderConfigured(CODEX_SPEECH_PROVIDER_ID)
+      const speechConfig = providers.getDefaultProviderConfig(CODEX_SPEECH_PROVIDER_ID) as Record<string, unknown>
+      if (applyCodexSpeechDefaults(speech, String(speechConfig.model ?? 'q4f16')))
+        console.info('[codex-brain] Speech defaulted to local Mandarin Kokoro')
 
       llm.setStreamOverride(async (_model, _chatProvider, messages, options) => {
         await runCodexStream(messages, options, streamTurn, interruptTurn)
