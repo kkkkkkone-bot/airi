@@ -8,6 +8,7 @@ import { useInferencePreload } from '@proj-airi/stage-ui/composables'
 import { useAuthProviderSync } from '@proj-airi/stage-ui/composables/use-auth-provider-sync'
 import { initializeAnalytics } from '@proj-airi/stage-ui/libs/analytics'
 import { usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia'
+import { configureCodexSystemSpeechProvider } from '@proj-airi/stage-ui/libs/providers'
 import { useCharacterOrchestratorStore } from '@proj-airi/stage-ui/stores/character'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
@@ -34,6 +35,7 @@ import {
   electronGodotStageStatusChanged,
   electronSettingsNavigate,
   electronStartTrackMousePosition,
+  electronSystemSpeechSynthesize,
   i18nGetLocale,
   i18nSetLocale,
 } from '../shared/eventa'
@@ -74,6 +76,8 @@ const chatSessionStore = useChatSessionStore()
 const context = useElectronEventaContext()
 const getMainLocale = useElectronEventaInvoke(i18nGetLocale)
 const setLocale = useElectronEventaInvoke(i18nSetLocale)
+const synthesizeSystemSpeech = useElectronEventaInvoke(electronSystemSpeechSynthesize)
+configureCodexSystemSpeechProvider(synthesizeSystemSpeech)
 const initialWindowRoutePath = resolveInitialWindowRoutePath(route.path)
 useChatStore()
 const builtinToolsStore = useTamagotchiBuiltinToolsStore()
@@ -216,11 +220,14 @@ function createFullStageRuntime() {
   return {
     async initialize() {
       initializeAnalytics()
+      await displayModelsStore.initialize()
+      cardStore.initialize()
+      // Character cards apply their own speech settings during initialization.
+      // Apply Codex-managed hearing and speech afterwards so a default card
+      // cannot silently restore speech-noop over the local voice.
       const codexStatus = await codexBrainBridge.initialize()
       if (codexStatus.enabled)
         console.info(`[codex-brain] Enabled for ${codexStatus.workspace}`)
-      await displayModelsStore.initialize()
-      cardStore.initialize()
 
       await displayModelsStore.loadDisplayModelsFromIndexedDB()
       await settingsStore.initializeStageModel()

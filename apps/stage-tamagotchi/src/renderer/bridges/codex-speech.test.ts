@@ -10,14 +10,14 @@ describe('applyCodexSpeechDefaults', () => {
       activeSpeechVoiceId: '',
     }
 
-    expect(applyCodexSpeechDefaults(selection, 'q4f16')).toBe(true)
+    expect(applyCodexSpeechDefaults(selection, 'windows-system')).toBe(true)
     expect(selection).toMatchObject({
-      activeSpeechProvider: 'kokoro-local',
-      activeSpeechModel: 'q4f16',
-      activeSpeechVoiceId: 'zf_xiaoxiao',
+      activeSpeechProvider: 'codex-system-speech',
+      activeSpeechModel: 'windows-system',
+      activeSpeechVoiceId: 'windows-auto',
       activeSpeechVoice: {
-        id: 'zf_xiaoxiao',
-        provider: 'kokoro-local',
+        id: 'windows-auto',
+        provider: 'codex-system-speech',
       },
     })
   })
@@ -37,15 +37,27 @@ describe('applyCodexSpeechDefaults', () => {
     })
   })
 
-  it('repairs an incomplete local voice selection', () => {
+  it('migrates the legacy Kokoro default to the Windows system voice', () => {
     const selection = {
       activeSpeechProvider: 'kokoro-local',
       activeSpeechModel: 'q8',
       activeSpeechVoiceId: '',
     }
 
-    expect(applyCodexSpeechDefaults(selection, 'q4f16')).toBe(true)
-    expect(selection.activeSpeechModel).toBe('q8')
-    expect(selection.activeSpeechVoiceId).toBe('zf_xiaoxiao')
+    expect(applyCodexSpeechDefaults(selection, 'windows-system')).toBe(true)
+    expect(selection.activeSpeechProvider).toBe('codex-system-speech')
+    expect(selection.activeSpeechModel).toBe('windows-system')
+    expect(selection.activeSpeechVoiceId).toBe('windows-auto')
+  })
+
+  it('uses the safe local model when provider defaults are blank', () => {
+    const selection = {
+      activeSpeechProvider: 'speech-noop',
+      activeSpeechModel: '',
+      activeSpeechVoiceId: '',
+    }
+
+    expect(applyCodexSpeechDefaults(selection, '')).toBe(true)
+    expect(selection.activeSpeechModel).toBe('windows-system')
   })
 })

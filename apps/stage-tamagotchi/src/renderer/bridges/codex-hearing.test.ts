@@ -28,4 +28,17 @@ describe('applyCodexHearingDefaults', () => {
       activeTranscriptionModel: 'whisper-1',
     })
   })
+
+  it('migrates the unsupported Electron Web Speech provider to local Whisper', () => {
+    const selection = {
+      activeTranscriptionProvider: 'browser-web-speech-api',
+      activeTranscriptionModel: 'web-speech-api',
+    }
+
+    expect(applyCodexHearingDefaults(selection)).toBe(true)
+    expect(selection).toEqual({
+      activeTranscriptionProvider: 'whisper-local',
+      activeTranscriptionModel: 'whisper-large-v3-turbo',
+    })
+  })
 })

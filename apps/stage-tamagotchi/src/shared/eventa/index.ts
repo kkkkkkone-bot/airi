@@ -36,6 +36,18 @@ export const electronCodexGetStatus = defineInvokeEventa<CodexBridgeStatus>('eve
 export const electronCodexStreamTurn = defineInvokeEventa<CodexBridgeEvent, CodexTurnRequest>('eventa:invoke:electron:codex:stream-turn')
 export const electronCodexInterruptTurn = defineInvokeEventa<void, CodexTurnReference>('eventa:invoke:electron:codex:interrupt-turn')
 
+export interface ElectronSystemSpeechRequest {
+  text: string
+  language?: string
+}
+
+export interface ElectronSystemSpeechResult {
+  data: Uint8Array
+  voiceName: string
+}
+
+export const electronSystemSpeechSynthesize = defineInvokeEventa<ElectronSystemSpeechResult, ElectronSystemSpeechRequest>('eventa:invoke:electron:system-speech:synthesize')
+
 export const electronStartTrackMousePosition = defineInvokeEventa('eventa:invoke:electron:start-tracking-mouse-position')
 export const electronStartDraggingWindow = defineInvokeEventa('eventa:invoke:electron:start-dragging-window')
 

@@ -9,6 +9,8 @@ import { useLLM } from '@proj-airi/stage-ui/stores/ai/chat-llm/llm'
 import { useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
+import { useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
+import { watch } from 'vue'
 
 import {
   electronCodexGetStatus,
@@ -103,7 +105,23 @@ export function createCodexBrainBridge() {
   const hearing = useHearingStore()
   const speech = useSpeechStore()
   const providers = useProviderStore()
+  const audioDevice = useSettingsAudioDevice()
   let enabled = false
+  let stopManagedSpeechGuard: (() => void) | undefined
+  let stopManagedHearingGuard: (() => void) | undefined
+
+  function applyManagedHearing() {
+    if (applyCodexHearingDefaults(hearing))
+      console.info('[codex-brain] Hearing defaulted to local Whisper')
+  }
+
+  function applyManagedSpeech() {
+    providers.initializeProvider(CODEX_SPEECH_PROVIDER_ID)
+    providers.forceProviderConfigured(CODEX_SPEECH_PROVIDER_ID)
+    const speechConfig = providers.getDefaultProviderConfig(CODEX_SPEECH_PROVIDER_ID) as Record<string, unknown>
+    if (applyCodexSpeechDefaults(speech, String(speechConfig.model ?? 'windows-system')))
+      console.info('[codex-brain] Speech defaulted to the Windows system voice')
+  }
 
   return {
     async initialize() {
@@ -112,14 +130,31 @@ export function createCodexBrainBridge() {
       if (!enabled)
         return status
 
-      if (applyCodexHearingDefaults(hearing))
-        console.info('[codex-brain] Hearing defaulted to local Whisper')
+      applyManagedHearing()
+      applyManagedSpeech()
 
-      providers.initializeProvider(CODEX_SPEECH_PROVIDER_ID)
-      providers.forceProviderConfigured(CODEX_SPEECH_PROVIDER_ID)
-      const speechConfig = providers.getDefaultProviderConfig(CODEX_SPEECH_PROVIDER_ID) as Record<string, unknown>
-      if (applyCodexSpeechDefaults(speech, String(speechConfig.model ?? 'q4f16')))
-        console.info('[codex-brain] Speech defaulted to local Mandarin Kokoro')
+      // Never restore a persisted always-listening state on startup. It can
+      // capture speaker output or a system loopback device before the user has
+      // confirmed the selected microphone, creating a self-conversation loop.
+      audioDevice.enabled = false
+
+      // Character-card sync can restore speech-noop after the bridge has
+      // initialized. Keep the Codex-owned defaults stable without overriding
+      // a user-selected external provider.
+      stopManagedSpeechGuard = watch(
+        () => speech.activeSpeechProvider,
+        (provider) => {
+          if (enabled && (provider === 'speech-noop' || provider === 'kokoro-local'))
+            applyManagedSpeech()
+        },
+      )
+      stopManagedHearingGuard = watch(
+        () => hearing.activeTranscriptionProvider,
+        (provider) => {
+          if (enabled && (!provider || provider === 'browser-web-speech-api'))
+            applyManagedHearing()
+        },
+      )
 
       llm.setStreamOverride(async (_model, _chatProvider, messages, options) => {
         await runCodexStream(messages, options, streamTurn, interruptTurn)
@@ -127,6 +162,10 @@ export function createCodexBrainBridge() {
       return status
     },
     dispose() {
+      stopManagedSpeechGuard?.()
+      stopManagedSpeechGuard = undefined
+      stopManagedHearingGuard?.()
+      stopManagedHearingGuard = undefined
       if (enabled)
         llm.setStreamOverride()
       enabled = false

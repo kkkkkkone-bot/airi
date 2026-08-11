@@ -7,6 +7,7 @@ import './lm-studio'
 import './local-audio'
 import './index-tts-vllm'
 import './kokoro-local'
+import './codex-system-speech'
 import './azure-openai'
 import './openai-compatible'
 import './atlascloud'
@@ -50,6 +51,13 @@ import './azure-ai-foundry'
 import './official'
 import './speech-noop'
 import './unspeech'
+
+export {
+  CODEX_SYSTEM_SPEECH_MODEL_ID,
+  CODEX_SYSTEM_SPEECH_PROVIDER_ID,
+  CODEX_SYSTEM_SPEECH_VOICE_ID,
+  configureCodexSystemSpeechProvider,
+} from './codex-system-speech'
 
 export {
   getDefaultStreamingModel,

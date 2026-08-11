@@ -10,7 +10,9 @@ export interface HearingSelection {
 
 /** Applies a private, credential-free hearing default without replacing user settings. */
 export function applyCodexHearingDefaults(selection: HearingSelection) {
-  if (selection.activeTranscriptionProvider)
+  const shouldUseLocalWhisper = !selection.activeTranscriptionProvider
+    || selection.activeTranscriptionProvider === 'browser-web-speech-api'
+  if (!shouldUseLocalWhisper)
     return false
 
   selection.activeTranscriptionProvider = WHISPER_LOCAL_PROVIDER_ID

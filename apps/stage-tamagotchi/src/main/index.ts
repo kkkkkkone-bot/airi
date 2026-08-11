@@ -40,6 +40,7 @@ import { setupArtistryBridge } from './services/airi/widgets/artistry-bridge'
 import { setupAutoUpdater } from './services/electron/auto-updater'
 import { setupGlobalShortcutService } from './services/electron/global-shortcut'
 import { setupMediaPermissionHandlers } from './services/electron/media-permissions'
+import { createSystemSpeechService } from './services/electron/system-speech'
 import { setupTray } from './tray'
 import { setupAboutWindowReusable } from './windows/about'
 import { setupBeatSync } from './windows/beat-sync'
@@ -175,6 +176,7 @@ app.whenReady().then(async () => {
   const codexBridgeManager = createDesktopCodexBridgeManager()
   const { context: codexContext } = createContext(ipcMain)
   createCodexService({ context: codexContext, manager: codexBridgeManager })
+  createSystemSpeechService({ context: codexContext })
 
   const widgetsManager = injeca.provide('windows:widgets', {
     dependsOn: { serverChannel, i18n },

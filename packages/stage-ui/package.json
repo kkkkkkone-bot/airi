@@ -29,6 +29,7 @@
     "./directives/*": "./src/directives/*.ts",
     "./libs/inference/adapters/*": "./src/libs/inference/adapters/*.ts",
     "./libs/inference": "./src/libs/inference/index.ts",
+    "./libs/providers": "./src/libs/providers/index.ts",
     "./libs/analytics": "./src/libs/analytics/index.ts",
     "./libs/analytics/*": "./src/libs/analytics/*.ts",
     "./libs/pinia": "./src/libs/pinia/index.ts",

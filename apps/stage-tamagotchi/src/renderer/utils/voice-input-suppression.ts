@@ -1,4 +1,6 @@
-export const DEFAULT_ASSISTANT_SPEECH_INPUT_COOLDOWN_MS = 800
+// Desktop speakers can take noticeably longer than browser playback to stop
+// leaking into the microphone. Keep a short but reliable post-TTS mute window.
+export const DEFAULT_ASSISTANT_SPEECH_INPUT_COOLDOWN_MS = 2500
 
 export interface VoiceInputSuppressionOptions {
   assistantSpeaking: boolean

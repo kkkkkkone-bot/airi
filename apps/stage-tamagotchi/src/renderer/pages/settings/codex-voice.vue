@@ -9,6 +9,7 @@ import { onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import {
+  CODEX_DEFAULT_SPEECH_VOICE_ID,
   CODEX_SPEECH_PROVIDER_ID,
   createCodexSpeechVoice,
 } from '../../bridges/codex-speech'
@@ -20,10 +21,7 @@ const providerConfigStore = useProviderConfigStore()
 const { activeSpeechModel, activeSpeechProvider, activeSpeechVoice, activeSpeechVoiceId } = storeToRefs(speechStore)
 
 const voices = [
-  { id: 'zf_xiaoxiao', nameKey: 'settings.codexSimple.voice.voices.xiaoxiao', toneKey: 'settings.codexSimple.voice.tones.warm' },
-  { id: 'zf_xiaobei', nameKey: 'settings.codexSimple.voice.voices.xiaobei', toneKey: 'settings.codexSimple.voice.tones.bright' },
-  { id: 'zf_xiaoyi', nameKey: 'settings.codexSimple.voice.voices.xiaoyi', toneKey: 'settings.codexSimple.voice.tones.soft' },
-  { id: 'zm_yunxi', nameKey: 'settings.codexSimple.voice.voices.yunxi', toneKey: 'settings.codexSimple.voice.tones.calm' },
+  { id: CODEX_DEFAULT_SPEECH_VOICE_ID, nameKey: 'settings.codexSimple.voice.voices.xiaoxiao', toneKey: 'settings.codexSimple.voice.tones.warm' },
 ] as const
 
 const previewingVoiceId = ref('')
@@ -38,7 +36,7 @@ function ensureLocalVoiceReady() {
 
   activeSpeechProvider.value = CODEX_SPEECH_PROVIDER_ID
   if (!activeSpeechModel.value)
-    activeSpeechModel.value = String(defaultConfig.model ?? 'q4f16')
+    activeSpeechModel.value = String(defaultConfig.model || 'windows-system')
 }
 
 function selectVoice(voiceId: string) {
@@ -126,7 +124,7 @@ onUnmounted(() => {
           @click="selectVoice(voice.id)"
         >
           <span class="voice-avatar" aria-hidden="true">
-            <span :class="voice.id.startsWith('zf_') ? 'i-solar:woman-bold-duotone' : 'i-solar:man-bold-duotone'" />
+            <span i-solar:woman-bold-duotone />
           </span>
           <span min-w-0 flex-1 text-left>
             <span block font-600>{{ t(voice.nameKey) }}</span>

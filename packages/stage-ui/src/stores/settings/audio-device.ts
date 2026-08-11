@@ -124,7 +124,10 @@ export const useSettingsAudioDevice = defineStore('settings-audio-devices', () =
     if (hasSelectedInput)
       syncSelectedAudioInputToRuntime()
 
-    if (audioInputEnabled.value && hasSelectedInput) {
+    // A persisted device id may disappear after a restart, unplug, or driver
+    // change. Keep listening enabled and let getUserMedia select the system
+    // default microphone instead of leaving the UI enabled without a stream.
+    if (audioInputEnabled.value) {
       const generation = createAudioInputStartGeneration()
       startStreamForGeneration(generation).catch((error) => {
         handleStartStreamError(generation, error, 'Unable to initialize audio input stream:')
