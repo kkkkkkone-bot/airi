@@ -9,7 +9,6 @@ import { useLLM } from '@proj-airi/stage-ui/stores/ai/chat-llm/llm'
 import { useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
-import { useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { watch } from 'vue'
 
 import {
@@ -105,7 +104,6 @@ export function createCodexBrainBridge() {
   const hearing = useHearingStore()
   const speech = useSpeechStore()
   const providers = useProviderStore()
-  const audioDevice = useSettingsAudioDevice()
   let enabled = false
   let stopManagedSpeechGuard: (() => void) | undefined
   let stopManagedHearingGuard: (() => void) | undefined
@@ -132,11 +130,6 @@ export function createCodexBrainBridge() {
 
       applyManagedHearing()
       applyManagedSpeech()
-
-      // Never restore a persisted always-listening state on startup. It can
-      // capture speaker output or a system loopback device before the user has
-      // confirmed the selected microphone, creating a self-conversation loop.
-      audioDevice.enabled = false
 
       // Character-card sync can restore speech-noop after the bridge has
       // initialized. Keep the Codex-owned defaults stable without overriding

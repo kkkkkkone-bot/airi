@@ -80,6 +80,18 @@ describe('store settings-audio-devices', () => {
     vi.resetModules()
   })
 
+  it('starts listening by default for a new installation', async () => {
+    const { useSettingsAudioDevice } = await import('./audio-device')
+    const store = useSettingsAudioDevice()
+
+    expect(store.enabled).toBe(true)
+
+    store.initialize()
+    await Promise.resolve()
+
+    expect(audioDeviceMock.startStream).toHaveBeenCalledTimes(1)
+  })
+
   it('starts with the persisted microphone instead of overwriting it with the runtime default', async () => {
     storageMock.values.set('settings/audio/input', 'microphone-1')
     storageMock.values.set('settings/audio/input/enabled', true)

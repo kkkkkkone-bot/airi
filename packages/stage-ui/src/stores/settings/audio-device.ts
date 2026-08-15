@@ -20,7 +20,11 @@ export const useSettingsAudioDevice = defineStore('settings-audio-devices', () =
   } = useAudioDevice()
 
   const selectedAudioInputPersist = useLocalStorageManualReset<string>('settings/audio/input', selectedAudioInputNonPersist.value)
-  const audioInputEnabled = useLocalStorageManualReset<boolean>('settings/audio/input/enabled', false)
+  // New AIRI installs should be ready for a hands-free conversation as soon
+  // as microphone permission is available. A user's manual off choice is
+  // still persisted by this same setting and therefore remains respected on
+  // subsequent launches.
+  const audioInputEnabled = useLocalStorageManualReset<boolean>('settings/audio/input/enabled', true)
   let audioInputStartGeneration = 0
   let audioInputStart: ReturnType<typeof startAudioInputStream> | undefined
 
