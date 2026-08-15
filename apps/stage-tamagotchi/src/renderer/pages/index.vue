@@ -336,6 +336,8 @@ const chatSession = useChatSessionStore()
 const codexVoiceBridge = createCodexVoiceBridge()
 const codexVoiceEnabled = ref(false)
 const codexVoiceRunning = ref(false)
+const codexVoiceStopping = ref(false)
+const codexVoiceRestartTimer = shallowRef<ReturnType<typeof setTimeout>>()
 const streamingTranscriptionUnavailable = ref(false)
 const shouldUseStreamInput = computed(() => supportsStreamInput.value && !!stream.value && !streamingTranscriptionUnavailable.value)
 const voiceTranscriptBuffer = createTranscriptBuffer({
@@ -526,10 +528,65 @@ async function sendVoiceInputTextToChat(text: string) {
   }
 }
 
+/** Stops a delayed direct-Codex reconnect that is no longer wanted. */
+function clearCodexVoiceReconnect() {
+  if (!codexVoiceRestartTimer.value)
+    return
+
+  clearTimeout(codexVoiceRestartTimer.value)
+  codexVoiceRestartTimer.value = undefined
+}
+
+/** Preserves an inspectable AIRI history without sending the transcript through Codex a second time. */
+function appendCodexVoiceTranscript(role: 'user' | 'assistant', text: string) {
+  const content = text.trim()
+  if (!content)
+    return
+
+  const sessionId = chatSession.activeSessionId
+  const previous = chatSession.getSessionMessages(sessionId).at(-1)
+  if (previous?.role === role && previous.content === content)
+    return
+
+  if (role === 'assistant') {
+    chatSession.appendSessionMessage(sessionId, {
+      role,
+      content,
+      slices: [],
+      tool_results: [],
+      createdAt: Date.now(),
+    })
+    return
+  }
+
+  chatSession.appendSessionMessage(sessionId, {
+    role,
+    content,
+    createdAt: Date.now(),
+  })
+}
+
+/** Reopens a normal-ended native voice transport while the user still has the microphone enabled. */
+function scheduleCodexVoiceReconnect() {
+  clearCodexVoiceReconnect()
+  if (codexVoiceStopping.value || !codexVoiceEnabled.value || !enabled.value)
+    return
+
+  codexVoiceRestartTimer.value = setTimeout(() => {
+    codexVoiceRestartTimer.value = undefined
+    if (codexVoiceStopping.value || !codexVoiceEnabled.value || !enabled.value)
+      return
+
+    void startCodexVoice().catch(error => reportVoiceInputFailure('reconnect Codex Voice', error))
+  }, 400)
+}
+
 /** Starts the native Codex Voice WebRTC session using the selected microphone. */
 async function startCodexVoice() {
   if (codexVoiceRunning.value)
     return
+  clearCodexVoiceReconnect()
+  codexVoiceStopping.value = false
   if (!await ensureLiveAudioInputStream())
     return
 
@@ -548,10 +605,14 @@ async function startCodexVoice() {
     },
     onEvent(event) {
       if (event.type === 'transcript-done') {
-        if (event.role === 'user')
+        if (event.role === 'user') {
           postSpeakerCaption(event.text)
-        else
+          appendCodexVoiceTranscript('user', event.text)
+        }
+        else {
           void tryCatch(() => postCaption({ type: 'caption-assistant', text: event.text }))
+          appendCodexVoiceTranscript('assistant', event.text)
+        }
       }
       if (event.type === 'error')
         toast.error(`Codex Voice: ${event.message}`)
@@ -563,10 +624,13 @@ async function startCodexVoice() {
     codexVoiceRunning.value = false
     nowSpeaking.value = false
     mouthOpenSize.value = 0
+    scheduleCodexVoiceReconnect()
   })
 }
 
 async function stopCodexVoice() {
+  codexVoiceStopping.value = true
+  clearCodexVoiceReconnect()
   await codexVoiceBridge.stop(chatSession.activeSessionId)
   nowSpeaking.value = false
   mouthOpenSize.value = 0
