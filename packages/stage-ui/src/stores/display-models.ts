@@ -73,9 +73,9 @@ export const useDisplayModelsStore = defineStore('display-models', () => {
     const models = [...displayModelsPresets]
 
     try {
-      await localforage.iterate<{ format: DisplayModelFormat, file: File, importedAt: number, previewImage?: string }, void>((val, key) => {
+      await localforage.iterate<{ format: DisplayModelFormat, file: File, name?: string, importedAt: number, previewImage?: string }, void>((val, key) => {
         if (key.startsWith('display-model-')) {
-          models.push({ id: key, format: val.format, type: 'file', file: val.file, name: val.file.name, importedAt: val.importedAt, previewImage: val.previewImage })
+          models.push({ id: key, format: val.format, type: 'file', file: val.file, name: val.name ?? val.file.name, importedAt: val.importedAt, previewImage: val.previewImage })
         }
       })
     }
