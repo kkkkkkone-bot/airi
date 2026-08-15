@@ -10,6 +10,7 @@ export const codexRealtimeVoices: readonly CodexRealtimeVoice[] = [
   { id: 'marin', name: 'Marin', description: '温暖、沉稳' },
   { id: 'cedar', name: 'Cedar', description: '低沉、从容' },
   { id: 'juniper', name: 'Juniper', description: '明快、亲切' },
+  { id: 'maple', name: 'Maple', description: '温柔、自然' },
 ] as const
 
 export const CODEX_DEFAULT_REALTIME_VOICE = 'sol'
