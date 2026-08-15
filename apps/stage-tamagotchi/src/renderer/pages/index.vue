@@ -340,6 +340,28 @@ const live2dParams = useLive2dParams()
 const { availableMotions } = storeToRefs(live2dParams)
 const codexVoiceBridge = createCodexVoiceBridge()
 const codexDesktopVoiceMonitor = createCodexDesktopVoiceMonitor()
+
+/** Extracts the active AIRI card's system prompt for direct Codex Voice. */
+function activeCardInstructions(): string | undefined {
+  const instructions = chatSession.getSessionMessages(chatSession.activeSessionId)
+    .filter(message => message.role === 'system')
+    .map((message) => {
+      if (typeof message.content === 'string')
+        return message.content.trim()
+      if (!Array.isArray(message.content))
+        return ''
+      return message.content
+        .map(part => typeof part === 'object' && part !== null && 'type' in part && part.type === 'text' && 'text' in part && typeof part.text === 'string' ? part.text : '')
+        .filter(Boolean)
+        .join('\n')
+        .trim()
+    })
+    .filter(Boolean)
+    .join('\n\n')
+
+  return instructions || undefined
+}
+
 const codexVoiceEnabled = ref(false)
 const codexVoiceRunning = ref(false)
 const codexVoiceStopping = ref(false)
@@ -636,6 +658,7 @@ async function startCodexVoice() {
   codexVoiceRunning.value = true
   void codexVoiceBridge.start({
     conversationId: chatSession.activeSessionId,
+    instructions: activeCardInstructions(),
     stream: currentStream,
     voice: resolveCodexRealtimeVoice(codexRealtimeVoice.value),
     onAudioLevel(level) {

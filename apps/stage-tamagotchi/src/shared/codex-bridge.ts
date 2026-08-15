@@ -20,6 +20,8 @@ export interface CodexTurnReference {
 /** Inputs needed to open Codex's experimental native voice session. */
 export interface CodexRealtimeRequest {
   conversationId: string
+  /** Role-card instructions for this native Codex Voice session. */
+  instructions?: string
   sdp: string
   voice?: string
 }

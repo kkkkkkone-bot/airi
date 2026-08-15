@@ -119,9 +119,12 @@ describe('codex bridge manager', () => {
     expect(transport.notifications).toContain('initialized')
     expect(transport.requests.filter(request => request.method === 'thread/start')).toHaveLength(1)
     expect(transport.requests.find(request => request.method === 'turn/start')?.params?.input).toEqual([
-      { type: 'text', text: 'Be friendly.\n\nhello' },
+      { type: 'text', text: 'hello' },
     ])
-    expect(transport.requests.find(request => request.method === 'thread/start')?.params?.sandbox).toBe('workspace-write')
+    expect(transport.requests.find(request => request.method === 'thread/start')?.params).toMatchObject({
+      developerInstructions: 'Be friendly.',
+      sandbox: 'workspace-write',
+    })
     expect(transport.requests.find(request => request.method === 'turn/start')?.params?.sandboxPolicy).toEqual({
       type: 'workspaceWrite',
       writableRoots: ['C:\\project'],
@@ -237,6 +240,32 @@ describe('codex bridge manager', () => {
       { type: 'transcript-done', role: 'assistant', text: '你好，我在。' },
       { type: 'closed', reason: 'ended' },
     ])
+  })
+
+  it('uses role-card instructions for native Codex Voice', async () => {
+    const transport = createReadyTransport()
+    const manager = createCodexBridgeManager({
+      enabled: true,
+      workspace: 'C:\\project',
+      isDirectory: () => true,
+      createTransport: () => transport,
+    })
+
+    const realtime = manager.runRealtime({
+      conversationId: 'conversation-1',
+      instructions: 'You are 小F. Reply warmly in Chinese.',
+      sdp: 'v=0\r\no=airi 1 1 IN IP4 127.0.0.1',
+      voice: 'cove',
+    }, () => {})
+    await vi.waitFor(() => expect(transport.requests.some(request => request.method === 'thread/realtime/start')).toBe(true))
+
+    expect(transport.requests.find(request => request.method === 'thread/start')?.params?.developerInstructions)
+      .toBe('You are 小F. Reply warmly in Chinese.')
+    expect(transport.requests.find(request => request.method === 'thread/realtime/start')?.params?.realtimeStartInstructions)
+      .toBe('You are 小F. Reply warmly in Chinese.')
+
+    transport.emit({ method: 'thread/realtime/closed', params: { threadId: 'thread-1', reason: 'ended' } })
+    await realtime
   })
 
   it('rejects the turn when the AIRI stream consumer fails', async () => {

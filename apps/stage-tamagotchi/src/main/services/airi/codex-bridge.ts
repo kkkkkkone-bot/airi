@@ -408,6 +408,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
   const workspace = options.workspace?.trim()
   const command = options.command?.trim() || 'codex'
   const threads = new Map<string, string>()
+  const threadInstructions = new Map<string, string>()
   const loadedThreads = new Set<string>()
   let client: JsonRpcClient | undefined
   let activeTurn: ActiveTurn | undefined
@@ -466,8 +467,20 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
     return initializing
   }
 
-  const ensureThread = async (rpc: JsonRpcClient, conversationId: string): Promise<{ threadId: string, isNew: boolean }> => {
-    const existing = threads.get(conversationId)
+  const ensureThread = async (
+    rpc: JsonRpcClient,
+    conversationId: string,
+    instructions?: string,
+  ): Promise<{ threadId: string, isNew: boolean }> => {
+    // Some internal callers only send instructions for their first turn. Keep
+    // the card already bound to the conversation unless a caller explicitly
+    // supplies a different non-empty value.
+    const normalizedInstructions = instructions?.trim() || threadInstructions.get(conversationId) || ''
+    // A character card is a developer-level instruction. Never silently reuse
+    // a thread created for a different card or before a card was configured.
+    const existing = threadInstructions.get(conversationId) === normalizedInstructions
+      ? threads.get(conversationId)
+      : undefined
     if (existing && loadedThreads.has(existing))
       return { threadId: existing, isNew: false }
 
@@ -476,12 +489,14 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
         threadId: existing,
         cwd: workspace,
         approvalPolicy: 'never',
+        developerInstructions: normalizedInstructions || undefined,
         sandbox: 'workspace-write',
       })
       const resumedThreadId = nestedString(result, 'thread', 'id')
       if (!resumedThreadId)
         throw new Error('thread/resume did not return a thread ID')
       threads.set(conversationId, resumedThreadId)
+      threadInstructions.set(conversationId, normalizedInstructions)
       loadedThreads.add(resumedThreadId)
       return { threadId: resumedThreadId, isNew: false }
     }
@@ -489,6 +504,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
     const result = await rpc.request('thread/start', {
       cwd: workspace,
       approvalPolicy: 'never',
+      developerInstructions: normalizedInstructions || undefined,
       sandbox: 'workspace-write',
       serviceName: 'airi_codex_brain',
     })
@@ -496,6 +512,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
     if (!threadId)
       throw new Error('thread/start did not return a thread ID')
     threads.set(conversationId, threadId)
+    threadInstructions.set(conversationId, normalizedInstructions)
     loadedThreads.add(threadId)
     return { threadId, isNew: true }
   }
@@ -607,7 +624,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
       await stopRealtime(activeRealtime.conversationId)
 
     const rpc = await startClient()
-    const thread = await ensureThread(rpc, request.conversationId)
+    const thread = await ensureThread(rpc, request.conversationId, request.instructions)
     const threadId = thread.threadId
 
     await new Promise<void>((resolve, reject) => {
@@ -664,6 +681,8 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
       }
       if (request.voice)
         params.voice = request.voice
+      if (request.instructions?.trim())
+        params.realtimeStartInstructions = request.instructions.trim()
 
       void rpc.request('thread/realtime/start', params).catch((error: unknown) => {
         finish(new Error(errorMessageFrom(error) ?? 'Failed to start Codex Voice.'))
@@ -684,19 +703,15 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
       conversationId: request.conversationId,
       interruptRequested: false,
     }
-    let turnText = request.text
     activeTurn = turn
 
     let rpc: JsonRpcClient
     let threadId: string
     try {
       rpc = await startClient()
-      const thread = await ensureThread(rpc, request.conversationId)
+      const thread = await ensureThread(rpc, request.conversationId, request.instructions)
       threadId = thread.threadId
       turn.threadId = threadId
-
-      if (thread.isNew && request.instructions?.trim())
-        turnText = `${request.instructions.trim()}\n\n${request.text}`
     }
     catch (error) {
       if (activeTurn === turn)
@@ -756,7 +771,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
 
       void rpc.request('turn/start', {
         threadId,
-        input: [{ type: 'text', text: turnText }],
+        input: [{ type: 'text', text: request.text }],
         cwd: workspace,
         approvalPolicy: 'never',
         sandboxPolicy: {
