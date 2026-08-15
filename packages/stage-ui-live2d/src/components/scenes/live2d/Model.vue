@@ -161,6 +161,7 @@ const live2dStore = useLive2dParams()
 const {
   currentMotion,
   availableMotions,
+  hiyoriEmotionMotion,
   motionMap,
   modelParameters,
 } = storeToRefs(live2dStore)
@@ -193,6 +194,8 @@ const HIYORI_SPEECH_END_GRACE_MS = 1200
 let hiyoriSpeechMotionTimer: ReturnType<typeof setTimeout> | undefined
 let hiyoriSpeechEndTimer: ReturnType<typeof setTimeout> | undefined
 let lastHiyoriSpeechMotionFileName: string | undefined
+let hiyoriEmotionMotionActive = false
+let hiyoriEmotionMotionAwaitingStart: { group: string, index: number } | undefined
 const beatSync = createBeatSyncController({
   baseAngles: () => ({
     x: modelParameters.value.angleX,
@@ -241,7 +244,7 @@ function scheduleNextHiyoriSpeechMotion() {
     + Math.random() * (HIYORI_SPEECH_MOTION_MAX_INTERVAL_MS - HIYORI_SPEECH_MOTION_MIN_INTERVAL_MS)
   hiyoriSpeechMotionTimer = setTimeout(() => {
     hiyoriSpeechMotionTimer = undefined
-    if (!props.nowSpeaking)
+    if (!props.nowSpeaking || hiyoriEmotionMotionActive)
       return
     playNextHiyoriSpeechMotion()
     scheduleNextHiyoriSpeechMotion()
@@ -249,7 +252,7 @@ function scheduleNextHiyoriSpeechMotion() {
 }
 
 function startHiyoriSpeechMotionRotation() {
-  if (!isHiyoriModel() || hiyoriSpeechMotionTimer)
+  if (!isHiyoriModel() || hiyoriSpeechMotionTimer || hiyoriEmotionMotionActive)
     return
   playNextHiyoriSpeechMotion()
   scheduleNextHiyoriSpeechMotion()
@@ -272,6 +275,21 @@ watch(() => props.nowSpeaking, (speaking) => {
     stopHiyoriSpeechMotionRotation()
   }, HIYORI_SPEECH_END_GRACE_MS)
 }, { immediate: true })
+
+/**
+ * Emotional actions temporarily own the motion channel.  This prevents the
+ * normal speech rotation (m01/m02/m05/m03) from overwriting a reaction such
+ * as m06 while the character is still speaking.
+ */
+watch(hiyoriEmotionMotion, (request) => {
+  if (!request || !isHiyoriModel())
+    return
+
+  hiyoriEmotionMotionActive = true
+  hiyoriEmotionMotionAwaitingStart = { group: request.group, index: request.index }
+  clearHiyoriSpeechMotionTimer()
+  currentMotion.value = { group: request.group, index: request.index }
+})
 
 // Listen for model reload requests (e.g., when runtime motion is uploaded)
 const disposeShouldUpdateView = live2dStore.onShouldUpdateView(() => {
@@ -446,10 +464,26 @@ async function loadModel() {
 
     motionManager.on('motionStart', (group, index) => {
       localCurrentMotion.value = { group, index }
+      const requestedEmotionMotion = hiyoriEmotionMotionAwaitingStart
+      if (requestedEmotionMotion && requestedEmotionMotion.group === group && requestedEmotionMotion.index === index)
+        hiyoriEmotionMotionAwaitingStart = undefined
     })
 
     // Listen for motion finish to restart runtime motion for looping
     motionManager.on('motionFinish', () => {
+      // For a forced emotion, an interrupted prior motion can emit its own
+      // finish event first. Wait until the requested emotional motion has
+      // actually started before handing control back to the speech rotation.
+      if (hiyoriEmotionMotionActive) {
+        if (hiyoriEmotionMotionAwaitingStart)
+          return
+
+        hiyoriEmotionMotionActive = false
+        if (props.nowSpeaking)
+          startHiyoriSpeechMotionRotation()
+        return
+      }
+
       if (props.nowSpeaking)
         return
       const selectedMotionGroup = localStorage.getItem('selected-runtime-motion-group')
@@ -830,6 +864,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
   isUnmounted = true
+  hiyoriEmotionMotionActive = false
+  hiyoriEmotionMotionAwaitingStart = undefined
   clearHiyoriSpeechMotionTimer()
   if (hiyoriSpeechEndTimer)
     clearTimeout(hiyoriSpeechEndTimer)

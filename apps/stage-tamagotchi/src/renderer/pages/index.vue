@@ -337,7 +337,7 @@ const chatStore = useChatStore()
 const chatSession = useChatSessionStore()
 const { messages: chatMessages } = storeToRefs(chatSession)
 const live2dParams = useLive2dParams()
-const { currentMotion, availableMotions } = storeToRefs(live2dParams)
+const { availableMotions } = storeToRefs(live2dParams)
 const codexVoiceBridge = createCodexVoiceBridge()
 const codexDesktopVoiceMonitor = createCodexDesktopVoiceMonitor()
 const codexVoiceEnabled = ref(false)
@@ -371,7 +371,7 @@ function playHiyoriEmotionForReply(text: string) {
   if (!hasHiyoriModel)
     return
 
-  currentMotion.value = { group: motion.group, index: motion.index }
+  live2dParams.requestHiyoriEmotionMotion(motion)
 }
 
 watch(chatMessages, (messages) => {
