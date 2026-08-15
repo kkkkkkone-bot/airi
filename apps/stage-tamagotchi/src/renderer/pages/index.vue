@@ -14,6 +14,7 @@ import {
 } from '@proj-airi/electron-vueuse'
 import { createTranscriptBuffer } from '@proj-airi/pipelines-audio'
 import { IS_DEV } from '@proj-airi/stage-shared'
+import { getHiyoriMotion, resolveHiyoriEmotionMotion, useLive2dParams } from '@proj-airi/stage-ui-live2d'
 import { useModelStore, useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three'
 import { HoloCoupon } from '@proj-airi/stage-ui/components'
 import {
@@ -334,6 +335,9 @@ const { transcribeForMediaStream, stopStreamingTranscription } = hearingPipeline
 const { error: transcriptionError, supportsStreamInput } = storeToRefs(hearingPipeline)
 const chatStore = useChatStore()
 const chatSession = useChatSessionStore()
+const { messages: chatMessages } = storeToRefs(chatSession)
+const live2dParams = useLive2dParams()
+const { currentMotion, availableMotions } = storeToRefs(live2dParams)
 const codexVoiceBridge = createCodexVoiceBridge()
 const codexDesktopVoiceMonitor = createCodexDesktopVoiceMonitor()
 const codexVoiceEnabled = ref(false)
@@ -343,6 +347,8 @@ const codexDesktopVoiceMonitorRunning = ref(false)
 const codexVoiceRestartTimer = shallowRef<ReturnType<typeof setTimeout>>()
 const codexRealtimeVoice = useLocalStorage('settings/codex/realtime-voice', CODEX_DEFAULT_REALTIME_VOICE)
 const streamingTranscriptionUnavailable = ref(false)
+const hiyoriEmotionTrackingStartedAt = Date.now()
+const playedHiyoriEmotionMessageKeys = new Set<string>()
 const shouldUseStreamInput = computed(() => supportsStreamInput.value && !!stream.value && !streamingTranscriptionUnavailable.value)
 const voiceTranscriptBuffer = createTranscriptBuffer({
   flushDelayMs: 1200,
@@ -352,6 +358,35 @@ const voiceTranscriptBuffer = createTranscriptBuffer({
   },
 })
 const voiceInputLoopGuard = createVoiceInputLoopGuard()
+
+/** Plays a semantic Hiyori gesture for a newly completed AIRI reply. */
+function playHiyoriEmotionForReply(text: string) {
+  const motion = resolveHiyoriEmotionMotion(text)
+  if (!motion)
+    return
+
+  // Other Live2D models have their own group/index layout. Only Hiyori has
+  // the user-defined m01–m10 semantic map.
+  const hasHiyoriModel = availableMotions.value.some(available => getHiyoriMotion(available.fileName) !== undefined)
+  if (!hasHiyoriModel)
+    return
+
+  currentMotion.value = { group: motion.group, index: motion.index }
+}
+
+watch(chatMessages, (messages) => {
+  for (const message of messages) {
+    if (message.role !== 'assistant' || typeof message.content !== 'string' || !message.content || !message.createdAt || message.createdAt < hiyoriEmotionTrackingStartedAt)
+      continue
+
+    const key = message.id ?? `${message.createdAt}:${message.content}`
+    if (playedHiyoriEmotionMessageKeys.has(key))
+      continue
+
+    playedHiyoriEmotionMessageKeys.add(key)
+    playHiyoriEmotionForReply(message.content)
+  }
+})
 
 const assistantSpeechSuppressedUntil = shallowRef(0)
 const assistantSpeechResumeTimer = shallowRef<ReturnType<typeof setTimeout>>()
