@@ -13,6 +13,7 @@ import {
 export interface CodexVoiceSessionOptions {
   conversationId: string
   instructions?: string
+  fullAccess?: boolean
   stream: MediaStream
   voice?: string
   onAudioLevel?: (level: number) => void
@@ -136,6 +137,7 @@ export function createCodexVoiceBridge() {
       for await (const event of streamRealtime({
         conversationId: options.conversationId,
         instructions: options.instructions,
+        fullAccess: options.fullAccess,
         sdp,
         voice: options.voice,
       })) {

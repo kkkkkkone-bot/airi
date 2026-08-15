@@ -162,6 +162,25 @@ describe('codex bridge manager', () => {
     expect(secondTransport.requests.filter(request => request.method === 'thread/start')).toHaveLength(0)
   })
 
+  it('uses Codex full access only when AIRI explicitly enables it', async () => {
+    const transport = createReadyTransport()
+    const manager = createCodexBridgeManager({
+      enabled: true,
+      workspace: 'C:\\project',
+      isDirectory: () => true,
+      createTransport: () => transport,
+    })
+
+    const turn = manager.runTurn({ conversationId: 'conversation-1', fullAccess: true, text: 'remove the requested file' }, () => {})
+    await vi.waitFor(() => expect(transport.requests.some(request => request.method === 'turn/start')).toBe(true))
+
+    expect(transport.requests.find(request => request.method === 'thread/start')?.params?.sandbox).toBe('danger-full-access')
+    expect(transport.requests.find(request => request.method === 'turn/start')?.params?.sandboxPolicy).toEqual({ type: 'dangerFullAccess' })
+
+    transport.emit({ method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status: 'completed' } } })
+    await turn
+  })
+
   it('interrupts the active turn for its conversation', async () => {
     const transport = createReadyTransport()
     transport.onRequest = (request) => {

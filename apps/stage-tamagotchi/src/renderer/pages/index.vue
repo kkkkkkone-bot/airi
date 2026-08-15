@@ -368,6 +368,7 @@ const codexVoiceStopping = ref(false)
 const codexDesktopVoiceMonitorRunning = ref(false)
 const codexVoiceRestartTimer = shallowRef<ReturnType<typeof setTimeout>>()
 const codexRealtimeVoice = useLocalStorage('settings/codex/realtime-voice', CODEX_DEFAULT_REALTIME_VOICE)
+const codexFullAccess = useLocalStorage('settings/codex/full-access', false)
 const streamingTranscriptionUnavailable = ref(false)
 const hiyoriEmotionTrackingStartedAt = Date.now()
 const playedHiyoriEmotionMessageKeys = new Set<string>()
@@ -659,6 +660,7 @@ async function startCodexVoice() {
   void codexVoiceBridge.start({
     conversationId: chatSession.activeSessionId,
     instructions: activeCardInstructions(),
+    fullAccess: codexFullAccess.value,
     stream: currentStream,
     voice: resolveCodexRealtimeVoice(codexRealtimeVoice.value),
     onAudioLevel(level) {
@@ -995,6 +997,19 @@ watch(codexRealtimeVoice, async () => {
   }
   catch (error) {
     reportVoiceInputFailure('change Codex Voice', error)
+  }
+})
+
+watch(codexFullAccess, async () => {
+  if (!codexVoiceEnabled.value || !enabled.value)
+    return
+
+  try {
+    await stopCodexVoice()
+    await startCodexVoice()
+  }
+  catch (error) {
+    reportVoiceInputFailure('apply Codex task permission', error)
   }
 })
 

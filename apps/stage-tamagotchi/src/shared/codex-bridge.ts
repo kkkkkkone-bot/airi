@@ -9,6 +9,8 @@ export interface CodexBridgeStatus {
 export interface CodexTurnRequest {
   conversationId: string
   instructions?: string
+  /** Allows Codex commands to access the local machine outside the AIRI workspace. */
+  fullAccess?: boolean
   text: string
 }
 
@@ -22,6 +24,7 @@ export interface CodexRealtimeRequest {
   conversationId: string
   /** Role-card instructions for this native Codex Voice session. */
   instructions?: string
+  fullAccess?: boolean
   sdp: string
   voice?: string
 }

@@ -409,6 +409,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
   const command = options.command?.trim() || 'codex'
   const threads = new Map<string, string>()
   const threadInstructions = new Map<string, string>()
+  const threadFullAccess = new Map<string, boolean>()
   const loadedThreads = new Set<string>()
   let client: JsonRpcClient | undefined
   let activeTurn: ActiveTurn | undefined
@@ -471,6 +472,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
     rpc: JsonRpcClient,
     conversationId: string,
     instructions?: string,
+    fullAccess = false,
   ): Promise<{ threadId: string, isNew: boolean }> => {
     // Some internal callers only send instructions for their first turn. Keep
     // the card already bound to the conversation unless a caller explicitly
@@ -478,7 +480,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
     const normalizedInstructions = instructions?.trim() || threadInstructions.get(conversationId) || ''
     // A character card is a developer-level instruction. Never silently reuse
     // a thread created for a different card or before a card was configured.
-    const existing = threadInstructions.get(conversationId) === normalizedInstructions
+    const existing = threadInstructions.get(conversationId) === normalizedInstructions && threadFullAccess.get(conversationId) === fullAccess
       ? threads.get(conversationId)
       : undefined
     if (existing && loadedThreads.has(existing))
@@ -490,13 +492,14 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
         cwd: workspace,
         approvalPolicy: 'never',
         developerInstructions: normalizedInstructions || undefined,
-        sandbox: 'workspace-write',
+        sandbox: fullAccess ? 'danger-full-access' : 'workspace-write',
       })
       const resumedThreadId = nestedString(result, 'thread', 'id')
       if (!resumedThreadId)
         throw new Error('thread/resume did not return a thread ID')
       threads.set(conversationId, resumedThreadId)
       threadInstructions.set(conversationId, normalizedInstructions)
+      threadFullAccess.set(conversationId, fullAccess)
       loadedThreads.add(resumedThreadId)
       return { threadId: resumedThreadId, isNew: false }
     }
@@ -505,7 +508,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
       cwd: workspace,
       approvalPolicy: 'never',
       developerInstructions: normalizedInstructions || undefined,
-      sandbox: 'workspace-write',
+      sandbox: fullAccess ? 'danger-full-access' : 'workspace-write',
       serviceName: 'airi_codex_brain',
     })
     const threadId = nestedString(result, 'thread', 'id')
@@ -513,6 +516,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
       throw new Error('thread/start did not return a thread ID')
     threads.set(conversationId, threadId)
     threadInstructions.set(conversationId, normalizedInstructions)
+    threadFullAccess.set(conversationId, fullAccess)
     loadedThreads.add(threadId)
     return { threadId, isNew: true }
   }
@@ -624,7 +628,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
       await stopRealtime(activeRealtime.conversationId)
 
     const rpc = await startClient()
-    const thread = await ensureThread(rpc, request.conversationId, request.instructions)
+    const thread = await ensureThread(rpc, request.conversationId, request.instructions, request.fullAccess)
     const threadId = thread.threadId
 
     await new Promise<void>((resolve, reject) => {
@@ -709,7 +713,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
     let threadId: string
     try {
       rpc = await startClient()
-      const thread = await ensureThread(rpc, request.conversationId, request.instructions)
+      const thread = await ensureThread(rpc, request.conversationId, request.instructions, request.fullAccess)
       threadId = thread.threadId
       turn.threadId = threadId
     }
@@ -774,11 +778,13 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
         input: [{ type: 'text', text: request.text }],
         cwd: workspace,
         approvalPolicy: 'never',
-        sandboxPolicy: {
-          type: 'workspaceWrite',
-          writableRoots: [workspace],
-          networkAccess: false,
-        },
+        sandboxPolicy: request.fullAccess
+          ? { type: 'dangerFullAccess' }
+          : {
+              type: 'workspaceWrite',
+              writableRoots: [workspace],
+              networkAccess: false,
+            },
       }).then(async (result) => {
         const turnId = nestedString(result, 'turn', 'id')
         if (!turnId)

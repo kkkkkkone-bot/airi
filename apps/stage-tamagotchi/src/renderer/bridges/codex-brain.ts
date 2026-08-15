@@ -9,6 +9,7 @@ import { useLLM } from '@proj-airi/stage-ui/stores/ai/chat-llm/llm'
 import { useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
+import { useLocalStorage } from '@vueuse/core'
 import { watch } from 'vue'
 
 import {
@@ -61,6 +62,7 @@ async function runCodexStream(
   options: StreamOptions | undefined,
   streamTurn: (payload: CodexTurnRequest) => AsyncIterable<CodexBridgeEvent>,
   interruptTurn: (payload: { conversationId: string }) => Promise<void>,
+  fullAccess: boolean,
 ) {
   const conversationId = options?.requestCorrelation?.conversationId
   if (!conversationId)
@@ -81,6 +83,7 @@ async function runCodexStream(
     for await (const event of streamTurn({
       conversationId,
       instructions: systemInstructions(messages),
+      fullAccess,
       text,
     })) {
       if (event.type === 'text-delta' || event.type === 'reasoning-delta')
@@ -104,6 +107,7 @@ export function createCodexBrainBridge() {
   const hearing = useHearingStore()
   const speech = useSpeechStore()
   const providers = useProviderStore()
+  const fullAccess = useLocalStorage('settings/codex/full-access', false)
   let enabled = false
   let stopManagedSpeechGuard: (() => void) | undefined
   let stopManagedHearingGuard: (() => void) | undefined
@@ -150,7 +154,7 @@ export function createCodexBrainBridge() {
       )
 
       llm.setStreamOverride(async (_model, _chatProvider, messages, options) => {
-        await runCodexStream(messages, options, streamTurn, interruptTurn)
+        await runCodexStream(messages, options, streamTurn, interruptTurn, fullAccess.value)
       })
       return status
     },

@@ -20,6 +20,7 @@ const getCodexStatus = useElectronEventaInvoke(electronCodexGetStatus)
 const codexStatus = ref<CodexBridgeStatus | null>(null)
 const codexStatusResolved = ref(false)
 const advancedSettingsVisible = useLocalStorage('settings/codex/advanced-visible', false)
+const codexFullAccess = useLocalStorage('settings/codex/full-access', false)
 
 const removeBeforeEach = router.beforeEach(async (_, __, next) => {
   if (!settingsStore.usePageSpecificTransitions || settingsStore.disableTransitions) {
@@ -54,6 +55,12 @@ const everydaySettings = computed(() => [
     description: t('settings.codexSimple.voice.description'),
     icon: 'i-solar:microphone-3-bold-duotone',
     to: '/settings/codex-voice',
+  },
+  {
+    title: '任务权限',
+    description: codexFullAccess.value ? '完全访问本机已开启' : '当前仅可访问 AIRI 工作区',
+    icon: codexFullAccess.value ? 'i-solar:shield-warning-bold-duotone' : 'i-solar:shield-check-bold-duotone',
+    to: '/settings/codex-access',
   },
   ...splitSettings.value.everyday,
 ])
