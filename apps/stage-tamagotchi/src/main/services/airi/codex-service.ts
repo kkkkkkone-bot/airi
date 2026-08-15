@@ -7,6 +7,8 @@ import { defineInvokeHandler, defineStreamInvokeHandler, toStreamHandler } from 
 import {
   electronCodexGetStatus,
   electronCodexInterruptTurn,
+  electronCodexStopRealtime,
+  electronCodexStreamRealtime,
   electronCodexStreamTurn,
 } from '../../../shared/eventa'
 
@@ -17,7 +19,11 @@ export function createCodexService(params: {
 }) {
   defineInvokeHandler(params.context, electronCodexGetStatus, () => params.manager.getStatus())
   defineInvokeHandler(params.context, electronCodexInterruptTurn, payload => params.manager.interruptTurn(payload.conversationId))
+  defineInvokeHandler(params.context, electronCodexStopRealtime, payload => params.manager.stopRealtime(payload.conversationId))
   defineStreamInvokeHandler(params.context, electronCodexStreamTurn, toStreamHandler(async ({ payload, emit }) => {
     await params.manager.runTurn(payload, emit)
+  }))
+  defineStreamInvokeHandler(params.context, electronCodexStreamRealtime, toStreamHandler(async ({ payload, emit }) => {
+    await params.manager.runRealtime(payload, emit)
   }))
 }

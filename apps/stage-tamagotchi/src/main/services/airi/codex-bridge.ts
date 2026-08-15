@@ -1,6 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
-import type { CodexBridgeEvent, CodexBridgeStatus, CodexTurnRequest } from '../../../shared/codex-bridge'
+import type { CodexBridgeEvent, CodexBridgeStatus, CodexRealtimeEvent, CodexRealtimeRequest, CodexTurnRequest } from '../../../shared/codex-bridge'
 
 import process from 'node:process'
 import readline from 'node:readline'
@@ -53,7 +53,9 @@ export interface CodexLineTransport {
 export interface CodexBridgeManager {
   getStatus: () => CodexBridgeStatus
   runTurn: (request: CodexTurnRequest, onEvent: (event: CodexBridgeEvent) => void | Promise<void>) => Promise<void>
+  runRealtime: (request: CodexRealtimeRequest, onEvent: (event: CodexRealtimeEvent) => void | Promise<void>) => Promise<void>
   interruptTurn: (conversationId: string) => Promise<void>
+  stopRealtime: (conversationId: string) => Promise<void>
   stop: () => Promise<void>
 }
 
@@ -70,6 +72,12 @@ interface ActiveTurn {
   threadId?: string
   turnId?: string
   interruptRequested: boolean
+}
+
+interface ActiveRealtime {
+  conversationId: string
+  threadId: string
+  finish: () => void
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -157,6 +165,41 @@ function mapBridgeEvent(message: JsonRpcMessage): CodexBridgeEvent | undefined {
   }
 
   return undefined
+}
+
+function mapRealtimeEvent(message: JsonRpcMessage): CodexRealtimeEvent | undefined {
+  if (!('method' in message))
+    return undefined
+
+  if (message.method === 'thread/realtime/sdp') {
+    const sdp = stringField(message.params, 'sdp')
+    return sdp ? { type: 'sdp', sdp } : undefined
+  }
+
+  if (message.method === 'thread/realtime/started') {
+    const threadId = stringField(message.params, 'threadId')
+    return threadId
+      ? { type: 'started', threadId, realtimeSessionId: stringField(message.params, 'realtimeSessionId') }
+      : undefined
+  }
+
+  if (message.method === 'thread/realtime/transcript/delta') {
+    const text = stringField(message.params, 'delta')
+    const role = stringField(message.params, 'role')
+    return text && role ? { type: 'transcript-delta', role, text } : undefined
+  }
+
+  if (message.method === 'thread/realtime/transcript/done') {
+    const text = stringField(message.params, 'text')
+    const role = stringField(message.params, 'role')
+    return text && role ? { type: 'transcript-done', role, text } : undefined
+  }
+
+  if (message.method === 'thread/realtime/closed')
+    return { type: 'closed', reason: stringField(message.params, 'reason') }
+
+  if (message.method === 'thread/realtime/error')
+    return { type: 'error', message: stringField(message.params, 'message') ?? 'Codex Voice failed' }
 }
 
 class JsonRpcClient {
@@ -260,7 +303,7 @@ class JsonRpcClient {
 }
 
 function createProcessTransport(command: string): CodexLineTransport {
-  const child: ChildProcessWithoutNullStreams = spawn(command, ['app-server'], {
+  const child: ChildProcessWithoutNullStreams = spawn(command, ['app-server', '--enable', 'realtime_conversation'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
   })
@@ -353,6 +396,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
   const loadedThreads = new Set<string>()
   let client: JsonRpcClient | undefined
   let activeTurn: ActiveTurn | undefined
+  let activeRealtime: ActiveRealtime | undefined
   let initializing: Promise<JsonRpcClient> | undefined
 
   const getStatus = (): CodexBridgeStatus => {
@@ -388,6 +432,9 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
             name: 'airi_codex_brain',
             title: 'AIRI Codex Brain',
             version: '0.1.0',
+          },
+          capabilities: {
+            experimentalApi: true,
           },
         })
         nextClient.notify('initialized')
@@ -446,6 +493,88 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
     await client.request('turn/interrupt', {
       threadId: activeTurn.threadId,
       turnId: activeTurn.turnId,
+    })
+  }
+
+  const stopRealtime = async (conversationId: string): Promise<void> => {
+    if (!activeRealtime || activeRealtime.conversationId !== conversationId || !client)
+      return
+    const currentRealtime = activeRealtime
+    await client.request('thread/realtime/stop', { threadId: currentRealtime.threadId })
+    currentRealtime.finish()
+  }
+
+  const runRealtime = async (
+    request: CodexRealtimeRequest,
+    onEvent: (event: CodexRealtimeEvent) => void | Promise<void>,
+  ): Promise<void> => {
+    if (!request.sdp.startsWith('v=0'))
+      throw new Error('Codex Voice requires a valid WebRTC SDP offer.')
+    if (activeRealtime)
+      await stopRealtime(activeRealtime.conversationId)
+
+    const rpc = await startClient()
+    const thread = await ensureThread(rpc, request.conversationId)
+    const threadId = thread.threadId
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false
+      let stopMessages = () => {}
+      let stopClose = () => {}
+      const finish = (error?: Error) => {
+        if (settled)
+          return
+        settled = true
+        stopMessages()
+        stopClose()
+        if (activeRealtime?.conversationId === request.conversationId)
+          activeRealtime = undefined
+        if (error)
+          reject(error)
+        else
+          resolve()
+      }
+
+      const handleMessage = async (message: JsonRpcMessage) => {
+        const messageThreadId = eventThreadId(message)
+        if (messageThreadId && messageThreadId !== threadId)
+          return
+
+        const event = mapRealtimeEvent(message)
+        if (!event)
+          return
+        await onEvent(event)
+        if (event.type === 'closed')
+          finish()
+        else if (event.type === 'error')
+          finish(new Error(event.message))
+      }
+
+      stopMessages = rpc.onMessage((message) => {
+        void handleMessage(message).catch((error: unknown) => {
+          finish(new Error(errorMessageFrom(error) ?? 'Failed to handle a Codex Voice event.'))
+        })
+      })
+      stopClose = rpc.onClose(error => finish(error))
+      activeRealtime = { conversationId: request.conversationId, threadId, finish }
+
+      const params: Record<string, unknown> = {
+        threadId,
+        outputModality: 'audio',
+        version: 'v3',
+        includeStartupContext: true,
+        clientManagedHandoffs: false,
+        flushTranscriptTailOnSessionEnd: false,
+        codexResponsesAsItems: false,
+        codexResponseHandoffMode: 'commentary',
+        transport: { type: 'webrtc', sdp: request.sdp },
+      }
+      if (request.voice)
+        params.voice = request.voice
+
+      void rpc.request('thread/realtime/start', params).catch((error: unknown) => {
+        finish(new Error(errorMessageFrom(error) ?? 'Failed to start Codex Voice.'))
+      })
     })
   }
 
@@ -567,7 +696,9 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
   return {
     getStatus,
     runTurn,
+    runRealtime,
     interruptTurn,
+    stopRealtime,
     stop,
   }
 }

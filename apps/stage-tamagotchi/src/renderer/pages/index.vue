@@ -40,6 +40,7 @@ import StatusIsland from '../components/stage-islands/status-island/index.vue'
 
 import { electronCodexGetStatus, electronOpenOnboarding } from '../../shared/eventa'
 import { modelSettingsRuntimeSnapshotChannelName } from '../../shared/model-settings-runtime'
+import { createCodexVoiceBridge } from '../bridges/codex-voice'
 import { useControlsIslandStore } from '../stores/controls-island'
 import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
 import { shouldOpenProviderOnboarding } from '../utils/codex-simple-settings'
@@ -324,7 +325,7 @@ watch(modelSettingsRuntimeChannelEvent, (event) => {
 const settingsAudioDeviceStore = useSettingsAudioDevice()
 const { stream, enabled } = storeToRefs(settingsAudioDeviceStore)
 const { askPermission, startStream, stopStream } = settingsAudioDeviceStore
-const { nowSpeaking } = storeToRefs(useSpeakingStore())
+const { mouthOpenSize, nowSpeaking } = storeToRefs(useSpeakingStore())
 const hearingStore = useHearingStore()
 const { activeTranscriptionModel, activeTranscriptionProvider } = storeToRefs(hearingStore)
 const hearingPipeline = useHearingSpeechInputPipeline()
@@ -332,6 +333,9 @@ const { transcribeForMediaStream, stopStreamingTranscription } = hearingPipeline
 const { error: transcriptionError, supportsStreamInput } = storeToRefs(hearingPipeline)
 const chatStore = useChatStore()
 const chatSession = useChatSessionStore()
+const codexVoiceBridge = createCodexVoiceBridge()
+const codexVoiceEnabled = ref(false)
+const codexVoiceRunning = ref(false)
 const streamingTranscriptionUnavailable = ref(false)
 const shouldUseStreamInput = computed(() => supportsStreamInput.value && !!stream.value && !streamingTranscriptionUnavailable.value)
 const voiceTranscriptBuffer = createTranscriptBuffer({
@@ -522,6 +526,52 @@ async function sendVoiceInputTextToChat(text: string) {
   }
 }
 
+/** Starts the native Codex Voice WebRTC session using the selected microphone. */
+async function startCodexVoice() {
+  if (codexVoiceRunning.value)
+    return
+  if (!await ensureLiveAudioInputStream())
+    return
+
+  const currentStream = stream.value
+  if (!currentStream)
+    throw new Error('Microphone stream is unavailable for Codex Voice')
+
+  codexVoiceRunning.value = true
+  void codexVoiceBridge.start({
+    conversationId: chatSession.activeSessionId,
+    stream: currentStream,
+    voice: 'cove',
+    onAudioLevel(level) {
+      mouthOpenSize.value = level
+      nowSpeaking.value = level > 0.025
+    },
+    onEvent(event) {
+      if (event.type === 'transcript-done') {
+        if (event.role === 'user')
+          postSpeakerCaption(event.text)
+        else
+          void tryCatch(() => postCaption({ type: 'caption-assistant', text: event.text }))
+      }
+      if (event.type === 'error')
+        toast.error(`Codex Voice: ${event.message}`)
+    },
+  }).catch((error: unknown) => {
+    reportVoiceInputFailure('connect Codex Voice', error)
+    enabled.value = false
+  }).finally(() => {
+    codexVoiceRunning.value = false
+    nowSpeaking.value = false
+    mouthOpenSize.value = 0
+  })
+}
+
+async function stopCodexVoice() {
+  await codexVoiceBridge.stop(chatSession.activeSessionId)
+  nowSpeaking.value = false
+  mouthOpenSize.value = 0
+}
+
 /** Filters repeated or known external audio before it can reach captions or chat. */
 function shouldAcceptVoiceTranscript(text: string) {
   const loopDecision = voiceInputLoopGuard.inspect(text)
@@ -657,10 +707,16 @@ watch(enabled, async (val) => {
   try {
     if (val) {
       await askPermission()
-      await voiceInputInteractionLifecycle.start()
+      if (codexVoiceEnabled.value)
+        await startCodexVoice()
+      else
+        await voiceInputInteractionLifecycle.start()
     }
     else {
-      await voiceInputInteractionLifecycle.stop()
+      if (codexVoiceEnabled.value)
+        await stopCodexVoice()
+      else
+        await voiceInputInteractionLifecycle.stop()
     }
   }
   catch (error) {
@@ -671,6 +727,8 @@ watch(enabled, async (val) => {
 }, { immediate: true })
 
 watch([activeTranscriptionProvider, activeTranscriptionModel, supportsStreamInput], async () => {
+  if (codexVoiceEnabled.value)
+    return
   streamingTranscriptionUnavailable.value = false
   if (!enabled.value)
     return
@@ -686,6 +744,9 @@ watch([activeTranscriptionProvider, activeTranscriptionModel, supportsStreamInpu
 })
 
 watch(nowSpeaking, async (speaking) => {
+  if (codexVoiceEnabled.value)
+    return
+
   if (speaking) {
     clearAssistantSpeechResumeTimer()
     try {
@@ -710,6 +771,18 @@ onMounted(async () => {
     console.warn('[onboarding] Failed to inspect Codex status:', error)
   }
 
+  codexVoiceEnabled.value = codexEnabled
+  if (codexEnabled && enabled.value) {
+    try {
+      await voiceInputInteractionLifecycle.stop({ flushTranscript: false })
+      await startCodexVoice()
+    }
+    catch (error) {
+      reportVoiceInputFailure('start Codex Voice', error)
+      enabled.value = false
+    }
+  }
+
   if (shouldOpenProviderOnboarding(onboardingStore.needsOnboarding, codexEnabled))
     await openOnboarding()
 })
@@ -720,10 +793,24 @@ onUnmounted(() => {
     ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
   })
   clearAssistantSpeechResumeTimer()
+  void stopCodexVoice().catch(error => reportVoiceInputFailure('stop Codex Voice', error))
   void voiceInputInteractionLifecycle.stop().catch(error => reportVoiceInputFailure('stop listening', error))
 })
 
 watch(stream, async (currentStream) => {
+  if (codexVoiceEnabled.value) {
+    if (!enabled.value || !currentStream || codexVoiceRunning.value)
+      return
+    try {
+      await startCodexVoice()
+    }
+    catch (error) {
+      reportVoiceInputFailure('restart Codex Voice after microphone changed', error)
+      enabled.value = false
+    }
+    return
+  }
+
   if (!enabled.value || !currentStream || voiceInputInteractionLifecycle.isStarting() || voiceInputInteractionLifecycle.isStopping() || isVoiceInputSuppressed())
     return
 

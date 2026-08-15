@@ -17,6 +17,22 @@ export interface CodexTurnReference {
   conversationId: string
 }
 
+/** Inputs needed to open Codex's experimental native voice session. */
+export interface CodexRealtimeRequest {
+  conversationId: string
+  sdp: string
+  voice?: string
+}
+
+/** Events emitted while Codex owns the WebRTC voice conversation. */
+export type CodexRealtimeEvent
+  = | { type: 'sdp', sdp: string }
+    | { type: 'started', threadId: string, realtimeSessionId?: string }
+    | { type: 'transcript-delta', role: string, text: string }
+    | { type: 'transcript-done', role: string, text: string }
+    | { type: 'closed', reason?: string }
+    | { type: 'error', message: string }
+
 /** Events that the main process streams to an AIRI renderer. */
 export type CodexBridgeEvent
   = | { type: 'text-delta', text: string }

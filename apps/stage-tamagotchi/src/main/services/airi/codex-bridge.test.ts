@@ -1,4 +1,4 @@
-import type { CodexBridgeEvent } from '../../../shared/codex-bridge'
+import type { CodexBridgeEvent, CodexRealtimeEvent } from '../../../shared/codex-bridge'
 
 import { describe, expect, it, vi } from 'vitest'
 
@@ -67,6 +67,10 @@ function createReadyTransport(threadId = 'thread-1', turnId = 'turn-1') {
       transport.respond(request.id, { thread: { id: threadId } })
     if (request.method === 'turn/start')
       transport.respond(request.id, { turn: { id: turnId } })
+    if (request.method === 'thread/realtime/start')
+      transport.respond(request.id, {})
+    if (request.method === 'thread/realtime/stop')
+      transport.respond(request.id, {})
   }
   return transport
 }
@@ -188,6 +192,51 @@ describe('codex bridge manager', () => {
       threadId: 'thread-1',
       turnId: 'turn-1',
     })
+  })
+
+  it('opens a native Codex Voice session and forwards its WebRTC events', async () => {
+    const transport = createReadyTransport()
+    const manager = createCodexBridgeManager({
+      enabled: true,
+      workspace: 'C:\\project',
+      isDirectory: () => true,
+      createTransport: () => transport,
+    })
+    const events: CodexRealtimeEvent[] = []
+
+    const realtime = manager.runRealtime({
+      conversationId: 'conversation-1',
+      sdp: 'v=0\r\no=airi 1 1 IN IP4 127.0.0.1',
+      voice: 'cove',
+    }, (event) => {
+      events.push(event)
+    })
+    await vi.waitFor(() => expect(transport.requests.some(request => request.method === 'thread/realtime/start')).toBe(true))
+
+    const request = transport.requests.find(item => item.method === 'thread/realtime/start')
+    expect(request?.params).toMatchObject({
+      threadId: 'thread-1',
+      outputModality: 'audio',
+      version: 'v3',
+      transport: {
+        type: 'webrtc',
+        sdp: 'v=0\r\no=airi 1 1 IN IP4 127.0.0.1',
+      },
+      voice: 'cove',
+    })
+
+    transport.emit({ method: 'thread/realtime/started', params: { threadId: 'thread-1', version: 'v3', realtimeSessionId: 'voice-1' } })
+    transport.emit({ method: 'thread/realtime/sdp', params: { threadId: 'thread-1', sdp: 'v=0\r\no=codex 1 1 IN IP4 127.0.0.1' } })
+    transport.emit({ method: 'thread/realtime/transcript/done', params: { threadId: 'thread-1', role: 'assistant', text: '你好，我在。' } })
+    transport.emit({ method: 'thread/realtime/closed', params: { threadId: 'thread-1', reason: 'ended' } })
+    await realtime
+
+    expect(events).toEqual([
+      { type: 'started', threadId: 'thread-1', realtimeSessionId: 'voice-1' },
+      { type: 'sdp', sdp: 'v=0\r\no=codex 1 1 IN IP4 127.0.0.1' },
+      { type: 'transcript-done', role: 'assistant', text: '你好，我在。' },
+      { type: 'closed', reason: 'ended' },
+    ])
   })
 
   it('rejects the turn when the AIRI stream consumer fails', async () => {
