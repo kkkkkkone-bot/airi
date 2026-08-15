@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
-import { defaultModelParameters, useExpressionStore, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
+import { defaultModelParameters, getHiyoriMotion, useExpressionStore, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { OPFSCache } from '@proj-airi/stage-ui-live2d/utils/opfs-loader'
 import { Button, Checkbox, FieldCheckbox, FieldCombobox, FieldRange, SelectTab } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
@@ -110,12 +110,16 @@ const live2dBlinkMode = computed<'auto' | 'force'>({
 })
 
 watch(() => live2d.availableMotions, (motions) => {
-  runtimeMotions.value = motions.map(m => ({
-    name: m.fileName.split('/').pop() || m.fileName,
-    displayPath: m.fileName,
-    group: m.motionName,
-    index: m.motionIndex,
-  }))
+  runtimeMotions.value = motions.map((m) => {
+    const hiyoriMotion = getHiyoriMotion(m.fileName)
+    const fileName = m.fileName.split('/').pop() || m.fileName
+    return {
+      name: hiyoriMotion ? `${fileName} · ${hiyoriMotion.label}` : fileName,
+      displayPath: m.fileName,
+      group: m.motionName,
+      index: m.motionIndex,
+    }
+  })
 
   console.info('Available motions:', runtimeMotions.value)
 }, { immediate: true })

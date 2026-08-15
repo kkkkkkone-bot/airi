@@ -27,6 +27,7 @@ import {
 } from '../../../composables/live2d'
 import { useFitModel } from '../../../composables/live2d/fit-model'
 import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
+import { getHiyoriMotion, hiyoriSpeakingMotions } from '../../../constants/hiyori-motions'
 import { useL2dViewControl, useLive2dParams } from '../../../stores'
 
 const props = withDefaults(defineProps<{
@@ -186,6 +187,12 @@ const savedEyeBlink = shallowRef<any>(null)
 const savedExpressionManager = shallowRef<any>(null)
 
 const localCurrentMotion = ref<{ group: string, index: number }>({ group: 'Idle', index: 0 })
+const HIYORI_SPEECH_MOTION_MIN_INTERVAL_MS = 3800
+const HIYORI_SPEECH_MOTION_MAX_INTERVAL_MS = 6200
+const HIYORI_SPEECH_END_GRACE_MS = 1200
+let hiyoriSpeechMotionTimer: ReturnType<typeof setTimeout> | undefined
+let hiyoriSpeechEndTimer: ReturnType<typeof setTimeout> | undefined
+let lastHiyoriSpeechMotionFileName: string | undefined
 const beatSync = createBeatSyncController({
   baseAngles: () => ({
     x: modelParameters.value.angleX,
@@ -194,6 +201,77 @@ const beatSync = createBeatSyncController({
   }),
   initialStyle: 'sway-sine',
 })
+
+function clearHiyoriSpeechMotionTimer() {
+  if (!hiyoriSpeechMotionTimer)
+    return
+  clearTimeout(hiyoriSpeechMotionTimer)
+  hiyoriSpeechMotionTimer = undefined
+}
+
+function stopHiyoriSpeechMotionRotation() {
+  clearHiyoriSpeechMotionTimer()
+  lastHiyoriSpeechMotionFileName = undefined
+}
+
+function isHiyoriModel() {
+  return availableMotions.value.some(motion => getHiyoriMotion(motion.fileName) !== undefined)
+}
+
+function playNextHiyoriSpeechMotion() {
+  if (!isHiyoriModel())
+    return
+
+  const candidates = hiyoriSpeakingMotions.filter((motion) => {
+    return availableMotions.value.some(available => available.fileName.endsWith(motion.fileName))
+  })
+  if (candidates.length === 0)
+    return
+
+  const withoutPrevious = candidates.filter(motion => motion.fileName !== lastHiyoriSpeechMotionFileName)
+  const pool = withoutPrevious.length > 0 ? withoutPrevious : candidates
+  const motion = pool[Math.floor(Math.random() * pool.length)]
+  lastHiyoriSpeechMotionFileName = motion.fileName
+  currentMotion.value = { group: motion.group, index: motion.index }
+}
+
+function scheduleNextHiyoriSpeechMotion() {
+  clearHiyoriSpeechMotionTimer()
+  const interval = HIYORI_SPEECH_MOTION_MIN_INTERVAL_MS
+    + Math.random() * (HIYORI_SPEECH_MOTION_MAX_INTERVAL_MS - HIYORI_SPEECH_MOTION_MIN_INTERVAL_MS)
+  hiyoriSpeechMotionTimer = setTimeout(() => {
+    hiyoriSpeechMotionTimer = undefined
+    if (!props.nowSpeaking)
+      return
+    playNextHiyoriSpeechMotion()
+    scheduleNextHiyoriSpeechMotion()
+  }, interval)
+}
+
+function startHiyoriSpeechMotionRotation() {
+  if (!isHiyoriModel() || hiyoriSpeechMotionTimer)
+    return
+  playNextHiyoriSpeechMotion()
+  scheduleNextHiyoriSpeechMotion()
+}
+
+watch(() => props.nowSpeaking, (speaking) => {
+  if (speaking) {
+    if (hiyoriSpeechEndTimer) {
+      clearTimeout(hiyoriSpeechEndTimer)
+      hiyoriSpeechEndTimer = undefined
+    }
+    startHiyoriSpeechMotionRotation()
+    return
+  }
+
+  if (hiyoriSpeechEndTimer)
+    clearTimeout(hiyoriSpeechEndTimer)
+  hiyoriSpeechEndTimer = setTimeout(() => {
+    hiyoriSpeechEndTimer = undefined
+    stopHiyoriSpeechMotionRotation()
+  }, HIYORI_SPEECH_END_GRACE_MS)
+}, { immediate: true })
 
 // Listen for model reload requests (e.g., when runtime motion is uploaded)
 const disposeShouldUpdateView = live2dStore.onShouldUpdateView(() => {
@@ -372,6 +450,8 @@ async function loadModel() {
 
     // Listen for motion finish to restart runtime motion for looping
     motionManager.on('motionFinish', () => {
+      if (props.nowSpeaking)
+        return
       const selectedMotionGroup = localStorage.getItem('selected-runtime-motion-group')
       const selectedMotionIndex = localStorage.getItem('selected-runtime-motion-index')
 
@@ -750,6 +830,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   isUnmounted = true
+  clearHiyoriSpeechMotionTimer()
+  if (hiyoriSpeechEndTimer)
+    clearTimeout(hiyoriSpeechEndTimer)
   resizeAnimation?.pause()
   disposeShouldUpdateView?.()
   expressionController.dispose()
