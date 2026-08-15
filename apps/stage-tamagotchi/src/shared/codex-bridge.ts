@@ -33,6 +33,11 @@ export type CodexRealtimeEvent
     | { type: 'closed', reason?: string }
     | { type: 'error', message: string }
 
+/** A privacy-preserving output-level sample from the Codex desktop process. */
+export type CodexDesktopAudioEvent
+  = | { type: 'level', level: number }
+    | { type: 'error', message: string }
+
 /** Events that the main process streams to an AIRI renderer. */
 export type CodexBridgeEvent
   = | { type: 'text-delta', text: string }

@@ -40,7 +40,7 @@ import StatusIsland from '../components/stage-islands/status-island/index.vue'
 
 import { electronCodexGetStatus, electronOpenOnboarding } from '../../shared/eventa'
 import { modelSettingsRuntimeSnapshotChannelName } from '../../shared/model-settings-runtime'
-import { createCodexVoiceBridge } from '../bridges/codex-voice'
+import { createCodexDesktopVoiceMonitor, createCodexVoiceBridge } from '../bridges/codex-voice'
 import { useControlsIslandStore } from '../stores/controls-island'
 import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
 import { CODEX_DEFAULT_REALTIME_VOICE, resolveCodexRealtimeVoice } from '../utils/codex-realtime-voice'
@@ -335,9 +335,11 @@ const { error: transcriptionError, supportsStreamInput } = storeToRefs(hearingPi
 const chatStore = useChatStore()
 const chatSession = useChatSessionStore()
 const codexVoiceBridge = createCodexVoiceBridge()
+const codexDesktopVoiceMonitor = createCodexDesktopVoiceMonitor()
 const codexVoiceEnabled = ref(false)
 const codexVoiceRunning = ref(false)
 const codexVoiceStopping = ref(false)
+const codexDesktopVoiceMonitorRunning = ref(false)
 const codexVoiceRestartTimer = shallowRef<ReturnType<typeof setTimeout>>()
 const codexRealtimeVoice = useLocalStorage('settings/codex/realtime-voice', CODEX_DEFAULT_REALTIME_VOICE)
 const streamingTranscriptionUnavailable = ref(false)
@@ -638,6 +640,35 @@ async function stopCodexVoice() {
   mouthOpenSize.value = 0
 }
 
+/** Makes the avatar react to Codex desktop output without ingesting desktop audio. */
+function startCodexDesktopVoiceMonitor() {
+  if (codexDesktopVoiceMonitorRunning.value)
+    return
+
+  codexDesktopVoiceMonitorRunning.value = true
+  void codexDesktopVoiceMonitor.start({
+    onAudioLevel(level) {
+      // AIRI's own native voice stream has the exact remote-audio meter, so it
+      // always takes priority while the in-app conversation is active.
+      if (codexVoiceRunning.value)
+        return
+      mouthOpenSize.value = level
+      nowSpeaking.value = level > 0.025
+    },
+    onError(message) {
+      console.warn(`[Main Page] Codex desktop voice animation unavailable: ${message}`)
+    },
+  }).catch((error: unknown) => {
+    console.warn('[Main Page] Failed to monitor Codex desktop voice output:', error)
+  }).finally(() => {
+    codexDesktopVoiceMonitorRunning.value = false
+    if (!codexVoiceRunning.value) {
+      mouthOpenSize.value = 0
+      nowSpeaking.value = false
+    }
+  })
+}
+
 /** Filters repeated or known external audio before it can reach captions or chat. */
 function shouldAcceptVoiceTranscript(text: string) {
   const loopDecision = voiceInputLoopGuard.inspect(text)
@@ -838,6 +869,7 @@ onMounted(async () => {
   }
 
   codexVoiceEnabled.value = codexEnabled
+  startCodexDesktopVoiceMonitor()
   if (codexEnabled && enabled.value) {
     try {
       await voiceInputInteractionLifecycle.stop({ flushTranscript: false })
@@ -859,6 +891,7 @@ onUnmounted(() => {
     ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
   })
   clearAssistantSpeechResumeTimer()
+  void codexDesktopVoiceMonitor.stop().catch(error => console.warn('[Main Page] Failed to stop Codex desktop voice monitor:', error))
   void stopCodexVoice().catch(error => reportVoiceInputFailure('stop Codex Voice', error))
   void voiceInputInteractionLifecycle.stop().catch(error => reportVoiceInputFailure('stop listening', error))
 })

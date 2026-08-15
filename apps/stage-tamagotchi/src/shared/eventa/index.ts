@@ -28,7 +28,7 @@ import type {
 } from '@proj-airi/stage-ui-three/trace'
 import type { Rectangle } from 'electron'
 
-import type { CodexBridgeEvent, CodexBridgeStatus, CodexRealtimeEvent, CodexRealtimeRequest, CodexTurnReference, CodexTurnRequest } from '../codex-bridge'
+import type { CodexBridgeEvent, CodexBridgeStatus, CodexDesktopAudioEvent, CodexRealtimeEvent, CodexRealtimeRequest, CodexTurnReference, CodexTurnRequest } from '../codex-bridge'
 
 import { defineEventa, defineInvokeEventa } from '@moeru/eventa'
 
@@ -37,6 +37,8 @@ export const electronCodexStreamTurn = defineInvokeEventa<CodexBridgeEvent, Code
 export const electronCodexInterruptTurn = defineInvokeEventa<void, CodexTurnReference>('eventa:invoke:electron:codex:interrupt-turn')
 export const electronCodexStreamRealtime = defineInvokeEventa<CodexRealtimeEvent, CodexRealtimeRequest>('eventa:invoke:electron:codex:stream-realtime')
 export const electronCodexStopRealtime = defineInvokeEventa<void, CodexTurnReference>('eventa:invoke:electron:codex:stop-realtime')
+export const electronCodexStreamDesktopAudio = defineInvokeEventa<CodexDesktopAudioEvent>('eventa:invoke:electron:codex:stream-desktop-audio')
+export const electronCodexStopDesktopAudio = defineInvokeEventa<void>('eventa:invoke:electron:codex:stop-desktop-audio')
 
 export interface ElectronSystemSpeechRequest {
   text: string

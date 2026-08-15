@@ -1,10 +1,12 @@
-import type { CodexRealtimeEvent } from '../../shared/codex-bridge'
+import type { CodexDesktopAudioEvent, CodexRealtimeEvent } from '../../shared/codex-bridge'
 
 import { defineStreamInvoke } from '@moeru/eventa'
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 
 import {
+  electronCodexStopDesktopAudio,
   electronCodexStopRealtime,
+  electronCodexStreamDesktopAudio,
   electronCodexStreamRealtime,
 } from '../../shared/eventa'
 
@@ -14,6 +16,11 @@ export interface CodexVoiceSessionOptions {
   voice?: string
   onAudioLevel?: (level: number) => void
   onEvent?: (event: CodexRealtimeEvent) => void
+}
+
+export interface CodexDesktopVoiceMonitorOptions {
+  onAudioLevel?: (level: number) => void
+  onError?: (message: string) => void
 }
 
 /** Owns one direct browser-to-Codex WebRTC voice session. */
@@ -156,4 +163,39 @@ export function createCodexVoiceBridge() {
   }
 
   return { start, stop, cleanup }
+}
+
+/** Maps the Codex desktop process's output level to an avatar without capturing audio content. */
+export function createCodexDesktopVoiceMonitor() {
+  const context = useElectronEventaContext()
+  const streamDesktopAudio = defineStreamInvoke(context.value, electronCodexStreamDesktopAudio)
+  const stopDesktopAudio = useElectronEventaInvoke(electronCodexStopDesktopAudio)
+  let running = false
+
+  async function start(options: CodexDesktopVoiceMonitorOptions) {
+    if (running)
+      return
+
+    running = true
+    try {
+      for await (const event of streamDesktopAudio(undefined)) {
+        const desktopEvent = event as CodexDesktopAudioEvent
+        if (desktopEvent.type === 'level')
+          options.onAudioLevel?.(desktopEvent.level)
+        else
+          options.onError?.(desktopEvent.message)
+      }
+    }
+    finally {
+      running = false
+      options.onAudioLevel?.(0)
+    }
+  }
+
+  async function stop() {
+    running = false
+    await stopDesktopAudio()
+  }
+
+  return { start, stop }
 }

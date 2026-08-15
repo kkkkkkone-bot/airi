@@ -99,6 +99,10 @@ export default {
   ],
   extraResources: [
     {
+      from: 'resources/codex-output-meter.ps1',
+      to: 'codex-output-meter.ps1',
+    },
+    {
       from: '../../engines/stage-tamagotchi-godot/out/${os}',
       to: 'godot-stage',
       filter: ['**/*'],

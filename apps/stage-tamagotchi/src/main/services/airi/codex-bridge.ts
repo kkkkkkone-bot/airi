@@ -1,15 +1,16 @@
-import type { ChildProcessWithoutNullStreams } from 'node:child_process'
+import type { ChildProcess, ChildProcessWithoutNullStreams } from 'node:child_process'
 
-import type { CodexBridgeEvent, CodexBridgeStatus, CodexRealtimeEvent, CodexRealtimeRequest, CodexTurnRequest } from '../../../shared/codex-bridge'
+import type { CodexBridgeEvent, CodexBridgeStatus, CodexDesktopAudioEvent, CodexRealtimeEvent, CodexRealtimeRequest, CodexTurnRequest } from '../../../shared/codex-bridge'
 
 import process from 'node:process'
 import readline from 'node:readline'
 
 import { spawn } from 'node:child_process'
-import { readdirSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
+import { app } from 'electron'
 
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
 
@@ -54,8 +55,10 @@ export interface CodexBridgeManager {
   getStatus: () => CodexBridgeStatus
   runTurn: (request: CodexTurnRequest, onEvent: (event: CodexBridgeEvent) => void | Promise<void>) => Promise<void>
   runRealtime: (request: CodexRealtimeRequest, onEvent: (event: CodexRealtimeEvent) => void | Promise<void>) => Promise<void>
+  runDesktopAudioMonitor: (onEvent: (event: CodexDesktopAudioEvent) => void | Promise<void>) => Promise<void>
   interruptTurn: (conversationId: string) => Promise<void>
   stopRealtime: (conversationId: string) => Promise<void>
+  stopDesktopAudioMonitor: () => Promise<void>
   stop: () => Promise<void>
 }
 
@@ -78,6 +81,18 @@ interface ActiveRealtime {
   conversationId: string
   threadId: string
   finish: () => void
+}
+
+interface ActiveDesktopAudioMonitor {
+  child: ChildProcess
+  finish: () => void
+}
+
+function resolveCodexOutputMeterPath() {
+  const path = app.isPackaged
+    ? join(process.resourcesPath, 'codex-output-meter.ps1')
+    : join(app.getAppPath(), 'resources', 'codex-output-meter.ps1')
+  return existsSync(path) ? path : undefined
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -397,6 +412,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
   let client: JsonRpcClient | undefined
   let activeTurn: ActiveTurn | undefined
   let activeRealtime: ActiveRealtime | undefined
+  let activeDesktopAudioMonitor: ActiveDesktopAudioMonitor | undefined
   let initializing: Promise<JsonRpcClient> | undefined
 
   const getStatus = (): CodexBridgeStatus => {
@@ -502,6 +518,83 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
     const currentRealtime = activeRealtime
     await client.request('thread/realtime/stop', { threadId: currentRealtime.threadId })
     currentRealtime.finish()
+  }
+
+  const stopDesktopAudioMonitor = async (): Promise<void> => {
+    const monitor = activeDesktopAudioMonitor
+    if (!monitor)
+      return
+
+    activeDesktopAudioMonitor = undefined
+    monitor.child.kill()
+    monitor.finish()
+  }
+
+  /** Streams only Codex desktop's output volume, never the underlying audio or transcript. */
+  const runDesktopAudioMonitor = async (
+    onEvent: (event: CodexDesktopAudioEvent) => void | Promise<void>,
+  ): Promise<void> => {
+    if (process.platform !== 'win32') {
+      await onEvent({ type: 'error', message: 'Codex desktop voice animation is currently available on Windows only.' })
+      return
+    }
+
+    await stopDesktopAudioMonitor()
+    const script = resolveCodexOutputMeterPath()
+    if (!script) {
+      await onEvent({ type: 'error', message: 'The Codex desktop audio meter is unavailable.' })
+      return
+    }
+
+    await new Promise<void>((resolve) => {
+      const child = spawn('powershell.exe', [
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        script,
+        '-ProcessName',
+        'ChatGPT',
+        '-IntervalMs',
+        '50',
+      ], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      })
+      let settled = false
+      let stderr = ''
+      const finish = () => {
+        if (settled)
+          return
+        settled = true
+        if (activeDesktopAudioMonitor?.child === child)
+          activeDesktopAudioMonitor = undefined
+        resolve()
+      }
+
+      activeDesktopAudioMonitor = { child, finish }
+      const output = readline.createInterface({ input: child.stdout })
+      output.on('line', (line) => {
+        const level = Number(line)
+        if (!Number.isFinite(level))
+          return
+        void onEvent({ type: 'level', level: Math.min(1, Math.max(0, level)) })
+      })
+      child.stderr.on('data', chunk => stderr += String(chunk))
+      child.on('error', async (error) => {
+        await onEvent({ type: 'error', message: errorMessageFrom(error) ?? 'Could not start the Codex desktop audio meter.' })
+        finish()
+      })
+      child.on('close', async (code) => {
+        output.close()
+        if (code && !settled) {
+          await onEvent({ type: 'error', message: stderr.trim() || `Codex desktop audio meter exited with code ${code}.` })
+        }
+        finish()
+      })
+    })
   }
 
   const runRealtime = async (
@@ -685,6 +778,7 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
   }
 
   const stop = async (): Promise<void> => {
+    await stopDesktopAudioMonitor()
     const current = client
     client = undefined
     activeTurn = undefined
@@ -697,8 +791,10 @@ export function createCodexBridgeManager(options: CodexBridgeManagerOptions): Co
     getStatus,
     runTurn,
     runRealtime,
+    runDesktopAudioMonitor,
     interruptTurn,
     stopRealtime,
+    stopDesktopAudioMonitor,
     stop,
   }
 }
