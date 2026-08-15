@@ -145,22 +145,22 @@ function resetMainWindowPosition() {
 </script>
 
 <template>
-  <div ref="islandRef" fixed bottom-2 right-2>
-    <div flex flex-col items-end gap-1>
-      <!-- iOS Style Drawer Panel -->
+  <div ref="islandRef" class="fixed bottom-4 left-1/2 z-20 -translate-x-1/2">
+    <div flex flex-col items-center gap-2>
+      <!-- Bottom dock: keeps all stage controls within one easy-to-reach area. -->
       <Transition
         enter-active-class="transition-all duration-500 cubic-bezier(0.32, 0.72, 0, 1)"
         leave-active-class="transition-all duration-400 cubic-bezier(0.32, 0.72, 0, 1)"
         enter-from-class="opacity-0 translate-y-8 scale-90 blur-sm"
         leave-to-class="opacity-0 translate-y-8 scale-90 blur-sm"
       >
-        <div v-if="expanded" border="1 neutral-200 dark:neutral-800" mb-2 flex flex-col gap-1 rounded-2xl p-2 backdrop-blur-xl class="bg-neutral-100/80 shadow-2xl shadow-black/20 dark:bg-neutral-900/80">
+        <div v-if="expanded" border="1 neutral-200 dark:neutral-800" flex flex-col gap-2 rounded-2xl p-2 backdrop-blur-xl class="min-w-[16rem] bg-neutral-100/88 shadow-2xl shadow-black/20 dark:bg-neutral-900/88">
           <ControlsIslandAuthButton
             :button-style="adjustStyleClasses.button"
             :icon-class="adjustStyleClasses.icon"
           />
 
-          <div grid grid-cols-3 gap-2>
+          <div grid grid-cols-4 gap-2>
             <ControlButtonTooltip disable-hoverable-content>
               <ControlButton
                 v-track-button="{ name: 'controls_island_action', action: 'toggle_settings' }"
@@ -280,9 +280,9 @@ function resetMainWindowPosition() {
         </div>
       </Transition>
 
-      <!-- Main Controls -->
-      <div flex flex-col gap-1>
-        <ControlButtonTooltip side="left">
+      <!-- Main controls stay in a horizontal bottom dock. -->
+      <div border="1 neutral-200/80 dark:neutral-800/80" flex items-center gap-1 rounded-full p-1.5 backdrop-blur-xl class="bg-neutral-100/88 shadow-black/15 shadow-xl dark:bg-neutral-900/88">
+        <ControlButtonTooltip side="top">
           <ControlButton
             v-track-button="{
               name: 'controls_island_action',
@@ -303,7 +303,7 @@ function resetMainWindowPosition() {
           </template>
         </ControlButtonTooltip>
 
-        <ControlButtonTooltip side="left">
+        <ControlButtonTooltip side="top">
           <ControlButton
             v-track-button="{ name: 'controls_island_action', action: 'toggle_chat' }"
             :button-style="adjustStyleClasses.button"
@@ -317,7 +317,7 @@ function resetMainWindowPosition() {
           </template>
         </ControlButtonTooltip>
 
-        <ControlButtonTooltip side="left">
+        <ControlButtonTooltip side="top">
           <ControlsIslandHearingConfig :show="blockingOverlays.has('hearing')" @update:show="setOverlay('hearing', $event)">
             <div class="relative">
               <ControlButton :button-style="adjustStyleClasses.button">
@@ -338,7 +338,7 @@ function resetMainWindowPosition() {
           :icon-class="adjustStyleClasses.icon"
         />
 
-        <ControlButtonTooltip side="left">
+        <ControlButtonTooltip side="top">
           <ControlButton :button-style="adjustStyleClasses.button" cursor-move :class="{ 'drag-region': isLinux }" @mousedown="startDraggingWindow?.()">
             <div i-ph:arrows-out-cardinal :class="adjustStyleClasses.icon" text="neutral-800 dark:neutral-300" />
           </ControlButton>
