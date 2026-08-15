@@ -24,9 +24,9 @@ import { defineInvokeHandler } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { initScreenCaptureForWindow } from '@proj-airi/electron-screen-capture/main'
 import { defu } from 'defu'
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, screen } from 'electron'
 import { isLinux, isMacOS } from 'std-env'
-import { array, number, object, optional, string } from 'valibot'
+import { array, boolean, number, object, optional, string } from 'valibot'
 
 import icon from '../../../../resources/icon.png?asset'
 
@@ -45,6 +45,7 @@ const appConfigSchema = object({
     y: optional(number()),
     width: optional(number()),
     height: optional(number()),
+    fullHeight: optional(boolean()),
   }))),
 })
 
@@ -78,13 +79,22 @@ export async function setupMainWindow(params: {
   setupConfig()
 
   const mainWindowConfig = getConfig().windows?.find(w => w.title === 'AIRI' && w.tag === 'main')
+  const primaryWorkArea = screen.getPrimaryDisplay().workArea
+  const useFullHeight = mainWindowConfig?.fullHeight ?? true
+  const fullHeightWidth = Math.min(primaryWorkArea.width, Math.max(500, Math.round(primaryWorkArea.height * 0.5)))
+  const initialWidth = useFullHeight
+    ? Math.max(mainWindowConfig?.width ?? 0, fullHeightWidth)
+    : mainWindowConfig?.width ?? 450.0
+  const initialHeight = useFullHeight
+    ? primaryWorkArea.height
+    : mainWindowConfig?.height ?? 600.0
 
   const window = new BrowserWindow({
     title: 'AIRI',
-    width: mainWindowConfig?.width ?? 450.0,
-    height: mainWindowConfig?.height ?? 600.0,
-    x: mainWindowConfig?.x,
-    y: mainWindowConfig?.y,
+    width: initialWidth,
+    height: initialHeight,
+    x: mainWindowConfig?.x ?? primaryWorkArea.x + Math.round((primaryWorkArea.width - initialWidth) / 2),
+    y: useFullHeight ? primaryWorkArea.y : mainWindowConfig?.y,
     show: false,
     icon,
     webPreferences: {
@@ -134,6 +144,7 @@ export async function setupMainWindow(params: {
         y: newBounds.y,
         width: newBounds.width,
         height: newBounds.height,
+        fullHeight: useFullHeight,
       })
     }
     else {
@@ -143,6 +154,7 @@ export async function setupMainWindow(params: {
       mainWindowConfig.y = newBounds.y
       mainWindowConfig.width = newBounds.width
       mainWindowConfig.height = newBounds.height
+      mainWindowConfig.fullHeight = useFullHeight
 
       config.windows[existingConfigIndex] = mainWindowConfig
     }

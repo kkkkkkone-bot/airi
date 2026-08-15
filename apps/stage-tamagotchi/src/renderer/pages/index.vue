@@ -29,7 +29,7 @@ import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-sto
 import { useHearingSpeechInputPipeline, useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useOnboardingStore } from '@proj-airi/stage-ui/stores/onboarding'
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
-import { refDebounced, useBroadcastChannel } from '@vueuse/core'
+import { refDebounced, useBroadcastChannel, useLocalStorage } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref, shallowRef, toRef, watch } from 'vue'
 import { toast } from 'vue-sonner'
@@ -43,6 +43,7 @@ import { modelSettingsRuntimeSnapshotChannelName } from '../../shared/model-sett
 import { createCodexVoiceBridge } from '../bridges/codex-voice'
 import { useControlsIslandStore } from '../stores/controls-island'
 import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
+import { CODEX_DEFAULT_REALTIME_VOICE, resolveCodexRealtimeVoice } from '../utils/codex-realtime-voice'
 import { shouldOpenProviderOnboarding } from '../utils/codex-simple-settings'
 import { resolveFadeOnHoverInteraction } from '../utils/fade-on-hover'
 import { shouldSampleStageTransparency } from '../utils/stage-three-transparency'
@@ -338,6 +339,7 @@ const codexVoiceEnabled = ref(false)
 const codexVoiceRunning = ref(false)
 const codexVoiceStopping = ref(false)
 const codexVoiceRestartTimer = shallowRef<ReturnType<typeof setTimeout>>()
+const codexRealtimeVoice = useLocalStorage('settings/codex/realtime-voice', CODEX_DEFAULT_REALTIME_VOICE)
 const streamingTranscriptionUnavailable = ref(false)
 const shouldUseStreamInput = computed(() => supportsStreamInput.value && !!stream.value && !streamingTranscriptionUnavailable.value)
 const voiceTranscriptBuffer = createTranscriptBuffer({
@@ -598,7 +600,7 @@ async function startCodexVoice() {
   void codexVoiceBridge.start({
     conversationId: chatSession.activeSessionId,
     stream: currentStream,
-    voice: 'cove',
+    voice: resolveCodexRealtimeVoice(codexRealtimeVoice.value),
     onAudioLevel(level) {
       mouthOpenSize.value = level
       nowSpeaking.value = level > 0.025
@@ -889,6 +891,19 @@ watch(stream, async (currentStream) => {
   catch (error) {
     reportVoiceInputFailure('restart after microphone changed', error)
     enabled.value = false
+  }
+})
+
+watch(codexRealtimeVoice, async () => {
+  if (!codexVoiceEnabled.value || !enabled.value)
+    return
+
+  try {
+    await stopCodexVoice()
+    await startCodexVoice()
+  }
+  catch (error) {
+    reportVoiceInputFailure('change Codex Voice', error)
   }
 })
 
